@@ -75,6 +75,7 @@ python -m restaurant_agent.cli --help
 | `--model NAME` | Override Anthropic model |
 | `--limit N` | Process at most N records (useful for smoke runs) |
 | `--confidence-threshold FLOAT` | Review routing threshold |
+| `--backend {pipeline,graph}` | Orchestration backend (default: `pipeline`) |
 | `--dry-run` | Deterministic local fake LLM responses; no API calls |
 
 ### Example: live run
@@ -93,6 +94,14 @@ Runs the full pipeline shape with heuristic local responses:
 
 ```bash
 python -m restaurant_agent.cli --dry-run --limit 3
+```
+
+### Example: LangGraph backend (dry run)
+
+Same behaviour as the default pipeline, using LangGraph orchestration:
+
+```bash
+python -m restaurant_agent.cli --backend graph --dry-run --limit 3
 ```
 
 ## Output files
@@ -169,4 +178,5 @@ Unit tests cover preprocessing, validation, evaluation, agents, pipeline orchest
 ## Documentation
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — system design
+- [docs/LANGGRAPH_ORCHESTRATION.md](docs/LANGGRAPH_ORCHESTRATION.md) — LangGraph backend design
 - [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) — detailed build specification

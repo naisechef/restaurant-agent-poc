@@ -6,7 +6,12 @@ This document describes the restaurant outdoor seating extraction pipeline: how 
 
 The system is a batch CLI pipeline. Each restaurant record flows through three agents that read and update a single shared `AgentState` object. Predictions are evaluated against optional ground-truth labels, written to CSV, and low-confidence cases are routed to a human review queue.
 
-No orchestration framework is used — a plain Python function chain over a typed Pydantic state object is sufficient at this scale.
+Two orchestration backends are available via `--backend`:
+
+- **`pipeline`** (default) — imperative function chain in `pipeline.py`
+- **`graph`** — LangGraph `StateGraph` in `graph_pipeline.py` with conditional routing to terminal nodes
+
+Both backends call the same agents and produce identical outputs. See [LANGGRAPH_ORCHESTRATION.md](LANGGRAPH_ORCHESTRATION.md) for graph design details.
 
 ## Pipeline diagram
 
@@ -14,14 +19,18 @@ No orchestration framework is used — a plain Python function chain over a type
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                         restaurant_agent.cli                            │
 │  argparse · logging setup · ClaudeClient or DryRunClaudeClient          │
+│  --backend pipeline | graph                                             │
 └───────────────────────────────────┬─────────────────────────────────────┘
                                     │
-                                    ▼
-┌─────────────────────────────────────────────────────────────────────────┐
-│                         restaurant_agent.pipeline                       │
-│  load → per-record agent chain → evaluate → write CSV outputs           │
-└───────────────────────────────────┬─────────────────────────────────────┘
-                                    │
+                    ┌───────────────┴───────────────┐
+                    ▼                               ▼
+┌───────────────────────────────┐   ┌───────────────────────────────────┐
+│   restaurant_agent.pipeline   │   │ restaurant_agent.graph_pipeline   │
+│   imperative agent chain      │   │ GraphPipeline · LangGraph routing │
+└───────────────┬───────────────┘   └───────────────┬───────────────────┘
+                │                                   │
+                └───────────────┬───────────────────┘
+                                │
      data/restaurants.csv           │
               │                     │
               ▼                     │
@@ -65,8 +74,9 @@ No orchestration framework is used — a plain Python function chain over a type
 
 | Module | Responsibility |
 |--------|----------------|
-| `cli.py` | Argument parsing, logging setup, client selection (`ClaudeClient` vs `DryRunClaudeClient`), summary output |
-| `pipeline.py` | Orchestration: load records, run agent chain per row, write outputs, return `EvaluationSummary` |
+| `cli.py` | Argument parsing, logging setup, client selection (`ClaudeClient` vs `DryRunClaudeClient`), backend selection, summary output |
+| `pipeline.py` | Imperative orchestration: load records, run agent chain per row, write outputs, return `EvaluationSummary` |
+| `graph_pipeline.py` | LangGraph orchestration: `GraphPipeline` class, conditional routing to terminal nodes, `run_graph_pipeline()` |
 | `config.py` | Environment-backed `Settings`; API key required only at real client construction |
 | `schemas.py` | Pydantic data contracts: `RestaurantRecord`, `ExtractionResult`, `EvaluationSummary` |
 | `state.py` | Shared `AgentState` passed between all agents |
@@ -169,7 +179,7 @@ The provider-specific name (`claude_client.py`, not `llm_client.py`) reflects wh
 
 ```
 src/restaurant_agent/
-├── cli.py, pipeline.py, config.py
+├── cli.py, pipeline.py, graph_pipeline.py, config.py
 ├── schemas.py, state.py
 ├── data_loader.py, preprocessing.py, validation.py, evaluation.py
 ├── claude_client.py, logging_config.py
@@ -180,13 +190,26 @@ src/restaurant_agent/
     └── validation_agent.py
 ```
 
+## LangGraph backend
+
+When `--backend graph` is selected, `GraphPipeline` compiles a linear `StateGraph(AgentState)` with conditional routing after validation:
+
+```
+START → preprocess → extract → validate → route
+  ├── success       → END
+  ├── needs_review  → END
+  └── failed        → END
+```
+
+Terminal nodes are pass-through in the current PoC — they exist to demonstrate routing and to host future hooks (metrics, retry, human-in-the-loop). `run_graph_pipeline()` reuses CSV writing, row conversion, and evaluation from `pipeline.py`.
+
 ## Key design decisions
 
 | Decision | Rationale |
 |----------|-----------|
-| Shared `AgentState` | Uniform agent contract; easy to trace, log, and test stage-by-stage |
+| Shared `AgentState` | Uniform agent contract; used directly as LangGraph state — no duplicate schema |
 | Two validation layers | Schema correctness vs operational trustworthiness |
 | Per-record error isolation | Batch resilience; failures tracked separately from model disagreement |
-| No orchestration framework | Three agents and one attribute do not justify LangGraph/LangChain overhead |
+| Dual orchestration backends | Imperative pipeline remains default; LangGraph is opt-in for graph-native routing |
 | Provider-specific LLM client | Mockable boundary; explicit about current provider |
 | Human review queue as output | Makes low-confidence routing concrete, not just a metric |

@@ -11,6 +11,7 @@ import pandas as pd
 from restaurant_agent.claude_client import ClaudeClient, DryRunClaudeClient
 from restaurant_agent.config import load_settings
 from restaurant_agent.logging_config import configure_logging
+from restaurant_agent.graph_pipeline import run_graph_pipeline
 from restaurant_agent.pipeline import run_pipeline
 from restaurant_agent.schemas import EvaluationSummary
 
@@ -60,6 +61,12 @@ def _build_parser() -> argparse.ArgumentParser:
             "Confidence threshold for human review routing "
             f"(default: {settings.confidence_threshold})"
         ),
+    )
+    parser.add_argument(
+        "--backend",
+        choices=("pipeline", "graph"),
+        default="pipeline",
+        help="Orchestration backend: imperative pipeline (default) or LangGraph",
     )
     parser.add_argument(
         "--dry-run",
@@ -113,7 +120,9 @@ def main(argv: list[str] | None = None) -> int:
     else:
         client = ClaudeClient(settings)
 
-    summary = run_pipeline(
+    run_fn = run_graph_pipeline if args.backend == "graph" else run_pipeline
+
+    summary = run_fn(
         input_path=args.input,
         output_path=args.output,
         review_queue_path=args.review_queue_output,
