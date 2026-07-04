@@ -9,7 +9,7 @@ import pandas as pd
 import pytest
 
 from restaurant_agent.config import Settings
-from restaurant_agent.gather_graph import EvidenceGatherPipeline, run_gather_graph_pipeline
+from restaurant_agent.gather_graph import EvidenceGatherPipeline, run_gather_graph, run_gather_graph_pipeline
 from restaurant_agent.gather_pipeline import GATHER_RESULT_COLUMNS
 from restaurant_agent.schemas import Evidence, EvidenceSourceType, RestaurantQuery
 from restaurant_agent.sources.fake import FakeSourceAdapter
@@ -162,3 +162,30 @@ def test_run_gather_graph_pipeline_writes_output(
 
     snippets = json.loads(pd.read_csv(output_path).iloc[0]["source_evidence_snippets"])
     assert "patio" in snippets[0].lower()
+
+
+def test_run_gather_graph_stream_preserves_ok_validation() -> None:
+    patio_evidence = Evidence(
+        source_type=EvidenceSourceType.SEARCH,
+        source_name="fake_search",
+        snippet="Sunny patio with garden views.",
+        reliability="medium",
+    )
+    adapters = {
+        "website": FakeSourceAdapter("fake_website", evidence=[]),
+        "search": FakeSourceAdapter("fake_search", evidence=[patio_evidence]),
+        "reviews": FakeSourceAdapter("fake_reviews", evidence=[]),
+        "maps": FakeSourceAdapter("fake_maps", evidence=[]),
+    }
+    client = FakeClaudeClient([valid_extraction_json(label="yes", confidence=0.98)])
+
+    result = run_gather_graph(QUERY, adapters, client, threshold=0.6)
+
+    assert result.prediction == "yes"
+    assert result.confidence == 0.98
+    assert result.validation_status == "ok"
+    assert result.route == "success"
+    assert result.needs_review is False
+    assert result.error is None
+    assert result.graph_trace is not None
+    assert result.graph_trace[-1].node == "success"

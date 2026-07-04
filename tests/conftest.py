@@ -10,6 +10,12 @@ from restaurant_agent.claude_client import LLMRequestError
 from restaurant_agent.schemas import ExtractionResult, RestaurantRecord
 
 
+@pytest.fixture(autouse=True)
+def _block_dotenv_loading(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Prevent local .env files from affecting test environment isolation."""
+    monkeypatch.setattr("restaurant_agent.config.load_dotenv", lambda *args, **kwargs: None)
+
+
 class FakeClaudeClient:
     """Hand-rolled test double for ClaudeClient.complete()."""
 

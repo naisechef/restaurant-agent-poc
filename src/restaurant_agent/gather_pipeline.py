@@ -15,8 +15,9 @@ from restaurant_agent.agents import (
 from restaurant_agent.config import Settings
 from restaurant_agent.evidence_merge import combine_evidence_text, merge_evidence
 from restaurant_agent.gather import gather_all
+from restaurant_agent.gather_result import build_gather_run_result
 from restaurant_agent.pipeline import LLMClient, _write_csv
-from restaurant_agent.schemas import RestaurantQuery
+from restaurant_agent.schemas import GatherRunResult, RestaurantQuery
 from restaurant_agent.sources.base import SourceAdapter
 from restaurant_agent.state import GatherState
 
@@ -140,6 +141,25 @@ def _process_gather(
                 "needs_review": True,
             }
         )
+
+
+def run_gather(
+    query: RestaurantQuery,
+    adapters: dict[str, SourceAdapter],
+    client: LLMClient,
+    threshold: float,
+    *,
+    dry_run: bool = False,
+    live_google: bool = False,
+) -> GatherRunResult:
+    """Gather and extract without writing CSV files (web/API use)."""
+    state = _process_gather(query, adapters, client, threshold)
+    return build_gather_run_result(
+        state,
+        backend="pipeline",
+        dry_run=dry_run,
+        live_google=live_google,
+    )
 
 
 def run_gather_pipeline(

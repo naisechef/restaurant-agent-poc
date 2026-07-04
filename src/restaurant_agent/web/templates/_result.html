@@ -1,0 +1,194 @@
+<section class="results" id="results">
+  <h2>Results for {{ result.name }}, {{ result.city }}</h2>
+
+  <div class="result-grid">
+    <div class="card">
+      <h3>Prediction</h3>
+      <p class="prediction prediction-{{ result.prediction or 'unknown' }}">
+        {{ result.prediction or "unknown" }}
+      </p>
+    </div>
+    <div class="card">
+      <h3>Confidence</h3>
+      <p>{% if result.confidence is not none %}{{ "%.0f"|format(result.confidence * 100) }}%{% else %}—{% endif %}</p>
+    </div>
+    <div class="card">
+      <h3>Validation</h3>
+      <p class="validation-{{ result.validation_status or 'unknown' }}">{{ result.validation_status or "—" }}</p>
+    </div>
+    <div class="card">
+      <h3>Route</h3>
+      <p class="route-{{ result.route }}">{{ result.route }}</p>
+      <p class="muted">{% if result.needs_review %}Needs review{% else %}No review needed{% endif %}</p>
+    </div>
+    <div class="card">
+      <h3>Evidence</h3>
+      <p>{{ result.gathered_evidence | length }} snippet(s)</p>
+      <p class="muted">{{ result.evidence | length }} LLM quote(s)</p>
+    </div>
+    <div class="card">
+      <h3>Sources</h3>
+      <p>{{ result.source_results | length }} adapter(s)</p>
+      <p class="muted">
+        {% if result.reliability_mix %}
+        H {{ result.reliability_mix.get("high", 0) }} /
+        M {{ result.reliability_mix.get("medium", 0) }} /
+        L {{ result.reliability_mix.get("low", 0) }}
+        {% else %}—{% endif %}
+      </p>
+    </div>
+  </div>
+
+  <div class="card execution-details">
+    <h3>Execution details</h3>
+    <dl class="details-grid">
+      <dt>Backend</dt>
+      <dd>{{ result.backend }}</dd>
+
+      <dt>Dry-run</dt>
+      <dd>{{ "yes" if result.dry_run else "no" }}</dd>
+
+      <dt>Live Google</dt>
+      <dd>{{ "yes" if result.live_google else "no" }}</dd>
+
+      <dt>Validation status</dt>
+      <dd>{{ result.validation_status or "—" }}</dd>
+
+      <dt>Route</dt>
+      <dd>{{ result.route }}{% if result.needs_review %} (needs review){% endif %}</dd>
+
+      <dt>Total gathered evidence</dt>
+      <dd>{{ result.gathered_evidence | length }}</dd>
+
+      <dt>LLM evidence quotes</dt>
+      <dd>{{ result.evidence | length }}</dd>
+
+      <dt>Source adapters</dt>
+      <dd>
+        {% if result.source_results %}
+        <ul class="compact-list">
+          {% for adapter in result.source_results %}
+          <li>
+            <strong>{{ adapter.source_name }}</strong>:
+            {{ adapter.evidence_count }} snippet(s)
+            {% if adapter.error %}<span class="error-inline">— {{ adapter.error }}</span>{% endif %}
+          </li>
+          {% endfor %}
+        </ul>
+        {% else %}—{% endif %}
+      </dd>
+
+      {% if result.gather_errors %}
+      <dt>Gather errors</dt>
+      <dd>
+        <ul class="compact-list error-list">
+          {% for err in result.gather_errors %}
+          <li>{{ err }}</li>
+          {% endfor %}
+        </ul>
+      </dd>
+      {% endif %}
+    </dl>
+
+    {% if result.google_places %}
+    <h4>Google Places</h4>
+    <dl class="details-grid">
+      <dt>Source</dt>
+      <dd>{{ result.google_places.source_name }}</dd>
+
+      <dt>Maps evidence</dt>
+      <dd>{{ result.google_places.maps_evidence_count }}</dd>
+
+      <dt>Review evidence</dt>
+      <dd>{{ result.google_places.review_evidence_count }}</dd>
+
+      <dt>Reliability</dt>
+      <dd>
+        high {{ result.google_places.reliability_high }} /
+        medium {{ result.google_places.reliability_medium }} /
+        low {{ result.google_places.reliability_low }}
+      </dd>
+
+      {% if result.google_places.maps_url %}
+      <dt>Maps URL</dt>
+      <dd class="cell-url">
+        <a href="{{ result.google_places.maps_url }}"
+           rel="noopener noreferrer" title="{{ result.google_places.maps_url }}">
+          {{ result.google_places.maps_url }}
+        </a>
+      </dd>
+      {% endif %}
+    </dl>
+    {% endif %}
+
+    {% if result.graph_trace %}
+    <h4>Graph nodes executed</h4>
+    <ol class="graph-trace">
+      {% for step in result.graph_trace %}
+      <li>
+        <strong>{{ step.node }}</strong>
+        {% if step.summary %}
+        <p class="graph-summary">{{ step.summary }}</p>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ol>
+    {% endif %}
+  </div>
+
+  {% if result.reasoning %}
+  <div class="card">
+    <h3>Reasoning</h3>
+    <p>{{ result.reasoning }}</p>
+  </div>
+  {% endif %}
+
+  {% if result.evidence %}
+  <div class="card">
+    <h3>LLM evidence quotes</h3>
+    <ul>
+      {% for quote in result.evidence %}
+      <li>{{ quote }}</li>
+      {% endfor %}
+    </ul>
+  </div>
+  {% endif %}
+
+  {% if result.gathered_evidence %}
+  <div class="card">
+    <h3>Gathered evidence snippets</h3>
+    <div class="table-scroll">
+      <table class="evidence-table">
+        <thead>
+          <tr>
+            <th class="col-snippet">Snippet</th>
+            <th class="col-source-type">Source type</th>
+            <th class="col-source">Source</th>
+            <th class="col-url">URL</th>
+            <th class="col-reliability">Reliability</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for item in result.gathered_evidence %}
+          <tr>
+            <td class="col-snippet cell-snippet">{{ item.snippet }}</td>
+            <td class="col-source-type cell-compact">{{ item.source_type.value }}</td>
+            <td class="col-source cell-compact">{{ item.source_name }}</td>
+            <td class="col-url cell-url">
+              {% if item.url %}
+              <a href="{{ item.url }}" rel="noopener noreferrer" title="{{ item.url }}">{{ item.url }}</a>
+              {% else %}—{% endif %}
+            </td>
+            <td class="col-reliability cell-compact">{{ item.reliability }}</td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+  {% endif %}
+
+  {% if result.error %}
+  <div class="alert alert-error" role="alert">{{ result.error }}</div>
+  {% endif %}
+</section>

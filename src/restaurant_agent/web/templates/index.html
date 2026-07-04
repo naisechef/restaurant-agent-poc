@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+
+{% block title %}Restaurant Agent Demo{% endblock %}
+
+{% block content %}
+<section class="hero">
+  <h1>Restaurant Outdoor Seating Demo</h1>
+  <p>
+    Enter a restaurant name and city to gather evidence, run extraction,
+    and view the outdoor seating prediction with supporting snippets.
+  </p>
+  <p class="muted">
+    API keys stay on the server. Default mode uses deterministic dry-run
+    responses and static fixtures — no external API calls required.
+  </p>
+  <a class="button" href="/demo">Try the demo</a>
+</section>
+{% endblock %}

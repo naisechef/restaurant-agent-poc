@@ -15,7 +15,12 @@ def run_adapter_safe(adapter: SourceAdapter, query: RestaurantQuery) -> SourceRe
     """Run one adapter; capture failures as SourceResult.error instead of raising."""
     try:
         evidence = adapter.gather(query)
-        return SourceResult(source_name=adapter.name, evidence=evidence)
+        place_location = getattr(adapter, "_place_location", None)
+        return SourceResult(
+            source_name=adapter.name,
+            evidence=evidence,
+            place_location=place_location,
+        )
     except Exception as exc:
         logger.warning("Source adapter %s failed: %s", adapter.name, exc)
         return SourceResult(source_name=adapter.name, evidence=[], error=str(exc))
