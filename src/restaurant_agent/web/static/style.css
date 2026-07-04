@@ -329,6 +329,34 @@ body {
   margin-bottom: 0.5rem;
 }
 
+.graph-trace-table .trace-duration,
+.graph-trace-table .trace-meta {
+  white-space: nowrap;
+  font-size: 0.9rem;
+}
+
+.graph-trace-table .graph-summary {
+  color: var(--muted);
+  font-size: 0.9rem;
+}
+
+.trace-status-completed { color: var(--success); }
+.trace-status-success { color: var(--success); }
+.trace-status-ok { color: var(--success); }
+.trace-status-error { color: var(--error); }
+.trace-status-failed { color: var(--error); }
+.trace-status-flagged { color: var(--warning); }
+.trace-status-needs_review { color: var(--warning); }
+
+.decision-path {
+  margin: 0;
+  padding-left: 1.25rem;
+}
+
+.decision-path li {
+  margin-bottom: 0.35rem;
+}
+
 .graph-summary {
   display: block;
   color: var(--muted);

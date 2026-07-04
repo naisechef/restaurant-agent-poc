@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 from typing import Literal
 
@@ -251,18 +252,25 @@ def run_gather_graph(
     graph = pipeline.build()
     state = _initial_gather_state(query)
     trace: list[GraphNodeExecution] = []
+    run_start = time.perf_counter()
+    prev_time = run_start
 
     try:
         for step in graph.stream(state, stream_mode="updates"):
             for node, raw_update in step.items():
+                node_start = prev_time
                 normalized = _normalize_graph_update(raw_update)
+                state = _apply_graph_update(state, normalized)
+                node_end = time.perf_counter()
+                duration_ms = round((node_end - node_start) * 1000, 2)
+                prev_time = node_end
                 trace.append(
                     GraphNodeExecution(
                         node=node,
                         update=_serialize_graph_update(normalized),
+                        duration_ms=duration_ms,
                     )
                 )
-                state = _apply_graph_update(state, normalized)
     except Exception as exc:
         logger.error(
             "Unexpected error in gather graph for %s: %s",

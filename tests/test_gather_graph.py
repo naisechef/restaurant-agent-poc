@@ -189,3 +189,4 @@ def test_run_gather_graph_stream_preserves_ok_validation() -> None:
     assert result.error is None
     assert result.graph_trace is not None
     assert result.graph_trace[-1].node == "success"
+    assert all(step.duration_ms is not None for step in result.graph_trace)

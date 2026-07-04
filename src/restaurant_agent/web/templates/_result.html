@@ -71,12 +71,6 @@
   <div class="card execution-details">
     <h3>Execution details</h3>
     <dl class="details-grid">
-      <dt>Backend</dt>
-      <dd>{{ result.backend }}</dd>
-
-      <dt>Dry-run</dt>
-      <dd>{{ "yes" if result.dry_run else "no" }}</dd>
-
       <dt>Live Google</dt>
       <dd>{{ "yes" if result.live_google else "no" }}</dd>
 
@@ -171,15 +165,71 @@
     {% endif %}
 
     {% if result.graph_trace %}
-    <h4>Graph nodes executed</h4>
-    <ol class="graph-trace">
-      {% for step in result.graph_trace %}
-      <li>
-        <strong>{{ step.node }}</strong>
-        {% if step.summary %}
-        <p class="graph-summary">{{ step.summary }}</p>
-        {% endif %}
-      </li>
+    <h4>Graph execution trace</h4>
+    {% if result.total_duration_ms is not none %}
+    <p class="muted">Total graph duration: {{ "%.1f"|format(result.total_duration_ms) }} ms</p>
+    {% endif %}
+    <div class="table-scroll">
+      <table class="graph-trace-table">
+        <thead>
+          <tr>
+            <th>Node</th>
+            <th>Status</th>
+            <th>Duration</th>
+            <th>Summary</th>
+            <th>Evidence / type</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for step in result.graph_trace %}
+          <tr>
+            <td><strong>{{ step.node }}</strong></td>
+            <td class="trace-status trace-status-{{ step.status or 'unknown' }}">
+              {{ step.status or "—" }}
+            </td>
+            <td class="trace-duration">
+              {% if step.duration_ms is not none %}{{ "%.1f"|format(step.duration_ms) }} ms{% else %}—{% endif %}
+            </td>
+            <td class="graph-summary">{{ step.summary or "—" }}</td>
+            <td class="trace-meta">
+              {% if step.evidence_count is not none %}
+              {{ step.evidence_count }} snippet(s)
+              {% elif step.update_type %}
+              {{ step.update_type | replace("_", " ") }}
+              {% else %}—{% endif %}
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% endif %}
+
+    {% if result.validation_summary %}
+    <h4>Validation summary</h4>
+    <dl class="details-grid">
+      <dt>Pipeline status</dt>
+      <dd class="validation-{{ result.validation_summary.pipeline_status or 'unknown' }}">
+        {{ result.validation_summary.pipeline_status or "—" }}
+      </dd>
+      <dt>Structured status</dt>
+      <dd class="validation-status validation-{{ result.validation_summary.structured_status or 'unknown' }}">
+        {{ (result.validation_summary.structured_status or "—") | replace("_", " ") }}
+      </dd>
+      <dt>Route</dt>
+      <dd class="route-{{ result.validation_summary.route }}">
+        {{ result.validation_summary.route | replace("_", " ") }}
+      </dd>
+      <dt>Route escalated</dt>
+      <dd>{{ "yes" if result.validation_summary.route_escalated else "no" }}</dd>
+    </dl>
+    {% endif %}
+
+    {% if result.decision_path %}
+    <h4>Decision path</h4>
+    <ol class="decision-path">
+      {% for step in result.decision_path %}
+      <li>{{ step }}</li>
       {% endfor %}
     </ol>
     {% endif %}

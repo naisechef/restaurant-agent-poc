@@ -1,4 +1,4 @@
-"""FastAPI web demo tests (network-free, dry-run only)."""
+"""FastAPI web demo tests (network-free via mocked Claude client)."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
+from restaurant_agent.claude_client import DryRunClaudeClient
 from restaurant_agent.schemas import GatherRunResult
 from restaurant_agent.sources.factory import build_adapters as real_build_adapters
 from restaurant_agent.sources.google_places import GooglePlacesAdapter
@@ -21,7 +22,7 @@ QUERY_CITY = "London"
 
 
 class _YesDryRunClient:
-    """Deterministic dry-run client that always extracts yes for verification tests."""
+    """Deterministic client that always extracts yes for verification tests."""
 
     def complete(self, system_prompt: str, user_prompt: str) -> str:
         return json.dumps(
@@ -60,6 +61,16 @@ def _google_places_build_adapters(
     return adapters
 
 
+@pytest.fixture(autouse=True)
+def _mock_claude_client(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    if request.node.get_closest_marker("no_claude_mock"):
+        return
+    monkeypatch.setattr(
+        "restaurant_agent.web.service.ClaudeClient",
+        lambda settings: DryRunClaudeClient(),
+    )
+
+
 @pytest.fixture
 def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
     monkeypatch.setenv("DEFAULT_FIXTURES_PATH", str(FIXTURES_PATH))
@@ -71,7 +82,18 @@ def client(monkeypatch: pytest.MonkeyPatch) -> TestClient:
 def test_get_landing_page(client: TestClient) -> None:
     response = client.get("/")
     assert response.status_code == 200
-    assert "Outdoor Seating Demo" in response.text
+    assert "Restaurant Outdoor Seating Demo" in response.text
+    assert "gather evidence, run extraction" in response.text
+    assert 'name="name"' in response.text
+    assert 'name="city"' in response.text
+    assert 'name="backend"' not in response.text
+    assert 'name="dry_run"' not in response.text
+    assert ">Search</button>" in response.text
+    assert 'data-loading-text="Searching..."' in response.text
+    assert "Precision, recall, and F1 are dataset-level" not in response.text
+    assert "Location will appear after search." in response.text
+    assert 'class="location-panel' in response.text
+    assert "Results for" not in response.text
 
 
 def test_get_health(client: TestClient) -> None:
@@ -80,87 +102,52 @@ def test_get_health(client: TestClient) -> None:
     assert response.json() == {"status": "ok"}
 
 
-def test_get_demo_form(client: TestClient) -> None:
-    response = client.get("/demo")
+def test_get_demo_redirects_to_landing(client: TestClient) -> None:
+    response = client.get("/demo", follow_redirects=False)
+    assert response.status_code == 307
+    assert response.headers["location"] == "/"
+
+    response = client.get("/demo", follow_redirects=True)
     assert response.status_code == 200
-    assert 'name="name"' in response.text
-    assert 'name="city"' in response.text
-    assert ">Search</button>" in response.text
-    assert 'data-loading-text="Searching..."' in response.text
-    assert "Precision, recall, and F1 are dataset-level" in response.text
-    assert "Location will appear after search." in response.text
-    assert 'class="location-panel' in response.text
+    assert "Restaurant Outdoor Seating Demo" in response.text
 
 
-def test_post_demo_pipeline_dry_run(client: TestClient) -> None:
+def test_post_demo_search(client: TestClient) -> None:
     response = client.post(
-        "/demo",
+        "/",
         data={
             "name": QUERY_NAME,
             "city": QUERY_CITY,
-            "backend": "pipeline",
-            "dry_run": "true",
         },
     )
     assert response.status_code == 200
     assert "Results for" in response.text
     assert "Execution details" in response.text
+    assert "Graph execution trace" in response.text
+    assert "merge_evidence" in response.text
     assert 'class="evidence-table"' in response.text
     assert "cell-url" in response.text
     assert "No live location data available." in response.text
-
-
-def test_post_demo_graph_dry_run(client: TestClient) -> None:
-    response = client.post(
-        "/demo",
-        data={
-            "name": QUERY_NAME,
-            "city": QUERY_CITY,
-            "backend": "graph",
-            "dry_run": "true",
-        },
-    )
-    assert response.status_code == 200
-    assert "Results for" in response.text
-    assert "Execution details" in response.text
-    assert "Graph nodes executed" in response.text
-    assert "merge_evidence" in response.text
-    assert "validation-ok" in response.text
-    assert "route-success" in response.text
     assert "Precision (yes)" not in response.text
     assert "Recall (yes)" not in response.text
+    assert "<dt>Backend</dt>" not in response.text
+    assert "<dt>Dry-run</dt>" not in response.text
 
 
 def test_post_demo_missing_name(client: TestClient) -> None:
     response = client.post(
-        "/demo",
-        data={"name": "", "city": QUERY_CITY, "backend": "pipeline", "dry_run": "true"},
+        "/",
+        data={"name": "", "city": QUERY_CITY},
     )
     assert response.status_code == 422
 
 
-def test_post_demo_invalid_backend(client: TestClient) -> None:
-    response = client.post(
-        "/demo",
-        data={
-            "name": QUERY_NAME,
-            "city": QUERY_CITY,
-            "backend": "invalid",
-            "dry_run": "true",
-        },
-    )
-    assert response.status_code == 400
-    assert "Invalid request" in response.text
-
-
-def test_api_gather_pipeline(client: TestClient) -> None:
+def test_api_gather(client: TestClient) -> None:
     response = client.post(
         "/api/gather",
         json={
             "name": QUERY_NAME,
             "city": QUERY_CITY,
-            "backend": "pipeline",
-            "dry_run": True,
             "live_google": False,
         },
     )
@@ -168,23 +155,8 @@ def test_api_gather_pipeline(client: TestClient) -> None:
     result = GatherRunResult.model_validate(response.json())
     assert result.name == QUERY_NAME
     assert result.city == QUERY_CITY
-    assert result.backend == "pipeline"
-    assert result.graph_trace is None
-
-
-def test_api_gather_graph(client: TestClient) -> None:
-    response = client.post(
-        "/api/gather",
-        json={
-            "name": QUERY_NAME,
-            "city": QUERY_CITY,
-            "backend": "graph",
-            "dry_run": True,
-        },
-    )
-    assert response.status_code == 200
-    result = GatherRunResult.model_validate(response.json())
     assert result.backend == "graph"
+    assert result.dry_run is False
     assert result.graph_trace is not None
     assert result.validation_status == "ok"
     assert result.route == "success"
@@ -197,6 +169,124 @@ def test_api_gather_graph(client: TestClient) -> None:
     assert all(step.summary for step in result.graph_trace)
 
 
+def test_graph_trace_includes_duration_ms(client: TestClient) -> None:
+    response = client.post(
+        "/api/gather",
+        json={
+            "name": QUERY_NAME,
+            "city": QUERY_CITY,
+        },
+    )
+    assert response.status_code == 200
+    result = GatherRunResult.model_validate(response.json())
+    assert result.graph_trace is not None
+    assert result.total_duration_ms is not None
+    assert result.total_duration_ms >= 0
+    assert all(step.duration_ms is not None for step in result.graph_trace)
+    assert all(step.duration_ms >= 0 for step in result.graph_trace)
+
+
+def test_graph_trace_summaries_include_structured_validation(
+    client: TestClient, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("GOOGLE_PLACES_API_KEY", "test-key")
+    monkeypatch.setattr(
+        "restaurant_agent.web.service.build_adapters",
+        _google_places_build_adapters,
+    )
+    monkeypatch.setattr(
+        "restaurant_agent.web.service.ClaudeClient",
+        lambda settings: _YesDryRunClient(),
+    )
+
+    response = client.post(
+        "/api/gather",
+        json={
+            "name": QUERY_NAME,
+            "city": QUERY_CITY,
+            "live_google": True,
+        },
+    )
+    assert response.status_code == 200
+    result = GatherRunResult.model_validate(response.json())
+    assert result.validation_summary is not None
+    assert result.validation_summary.structured_status == "verified"
+    assert result.validation_summary.route == "success"
+    assert result.validation_summary.route_escalated is False
+
+    terminal = result.graph_trace[-1]
+    assert terminal.node == "success"
+    assert "Structured validation: verified" in terminal.summary
+    assert "Route: success" in terminal.summary
+
+
+def test_demo_html_renders_duration_and_decision_path(client: TestClient) -> None:
+    response = client.post(
+        "/",
+        data={
+            "name": QUERY_NAME,
+            "city": QUERY_CITY,
+        },
+    )
+    assert response.status_code == 200
+    text = response.text
+    assert "Graph execution trace" in text
+    assert "graph-trace-table" in text
+    assert " ms" in text
+    assert "Decision path" in text
+    assert "decision-path" in text
+    assert "Claude predicted" in text
+
+
+def test_api_includes_sanitized_timing_and_trace_fields(client: TestClient) -> None:
+    response = client.post(
+        "/api/gather",
+        json={
+            "name": QUERY_NAME,
+            "city": QUERY_CITY,
+        },
+    )
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload.get("total_duration_ms") is not None
+    assert payload.get("validation_summary") is not None
+    assert payload.get("decision_path")
+
+    trace = payload["graph_trace"]
+    for step in trace:
+        assert "duration_ms" in step
+        assert "status" in step
+        assert "update_type" in step
+        update = step.get("update") or {}
+        assert "raw_text" not in update
+        assert "cleaned_text" not in update
+
+
+def test_timing_fields_never_include_sensitive_data(client: TestClient) -> None:
+    response = client.post(
+        "/api/gather",
+        json={
+            "name": QUERY_NAME,
+            "city": QUERY_CITY,
+        },
+    )
+    assert response.status_code == 200
+    text = response.text.lower()
+    for forbidden in (
+        "raw_text",
+        "cleaned_text",
+        "api_key",
+        "traceback",
+        "anthropic_api_key",
+        "google_places_api_key",
+        "evidence_fixtures",
+        "system_prompt",
+        "user_prompt",
+    ):
+        assert forbidden not in text
+
+
+@pytest.mark.no_claude_mock
 def test_api_gather_missing_api_key(client: TestClient, monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
     response = client.post(
@@ -204,8 +294,6 @@ def test_api_gather_missing_api_key(client: TestClient, monkeypatch: pytest.Monk
         json={
             "name": QUERY_NAME,
             "city": QUERY_CITY,
-            "backend": "pipeline",
-            "dry_run": False,
         },
     )
     assert response.status_code == 400
@@ -224,8 +312,6 @@ def test_api_gather_missing_google_key(
         json={
             "name": QUERY_NAME,
             "city": QUERY_CITY,
-            "backend": "pipeline",
-            "dry_run": True,
             "live_google": True,
         },
     )
@@ -241,8 +327,6 @@ def test_api_gather_name_too_long(client: TestClient) -> None:
         json={
             "name": "x" * 201,
             "city": QUERY_CITY,
-            "backend": "pipeline",
-            "dry_run": True,
         },
     )
     assert response.status_code == 422
@@ -265,8 +349,6 @@ def test_graph_trace_omits_raw_text(client: TestClient) -> None:
         json={
             "name": QUERY_NAME,
             "city": QUERY_CITY,
-            "backend": "graph",
-            "dry_run": True,
         },
     )
     assert response.status_code == 200
@@ -278,14 +360,13 @@ def test_graph_trace_omits_raw_text(client: TestClient) -> None:
         assert "cleaned_text" not in update
 
 
+@pytest.mark.no_claude_mock
 def test_error_responses_never_include_secrets(client: TestClient) -> None:
     response = client.post(
         "/api/gather",
         json={
             "name": QUERY_NAME,
             "city": QUERY_CITY,
-            "backend": "pipeline",
-            "dry_run": False,
         },
     )
     assert response.status_code == 400
@@ -296,12 +377,10 @@ def test_error_responses_never_include_secrets(client: TestClient) -> None:
 
 def test_demo_html_never_includes_sensitive_fields(client: TestClient) -> None:
     response = client.post(
-        "/demo",
+        "/",
         data={
             "name": QUERY_NAME,
             "city": QUERY_CITY,
-            "backend": "graph",
-            "dry_run": "true",
         },
     )
     assert response.status_code == 200
@@ -324,8 +403,6 @@ def test_api_gather_json_never_includes_sensitive_fields(client: TestClient) -> 
         json={
             "name": QUERY_NAME,
             "city": QUERY_CITY,
-            "backend": "graph",
-            "dry_run": True,
         },
     )
     assert response.status_code == 200
@@ -340,14 +417,12 @@ def test_execution_details_in_api_response(client: TestClient) -> None:
         json={
             "name": QUERY_NAME,
             "city": QUERY_CITY,
-            "backend": "graph",
-            "dry_run": True,
             "live_google": False,
         },
     )
     assert response.status_code == 200
     result = GatherRunResult.model_validate(response.json())
-    assert result.dry_run is True
+    assert result.dry_run is False
     assert result.live_google is False
     assert result.reliability_mix["medium"] >= 1
     assert len(result.source_results) == 4
@@ -364,17 +439,15 @@ def test_demo_location_panel_with_mocked_live_google(
         _google_places_build_adapters,
     )
     monkeypatch.setattr(
-        "restaurant_agent.web.service.DryRunClaudeClient",
-        _YesDryRunClient,
+        "restaurant_agent.web.service.ClaudeClient",
+        lambda settings: _YesDryRunClient(),
     )
 
     response = client.post(
-        "/demo",
+        "/",
         data={
             "name": QUERY_NAME,
             "city": QUERY_CITY,
-            "backend": "pipeline",
-            "dry_run": "true",
             "live_google": "true",
         },
     )
@@ -406,8 +479,8 @@ def test_api_gather_with_mocked_live_google_includes_location(
         _google_places_build_adapters,
     )
     monkeypatch.setattr(
-        "restaurant_agent.web.service.DryRunClaudeClient",
-        _YesDryRunClient,
+        "restaurant_agent.web.service.ClaudeClient",
+        lambda settings: _YesDryRunClient(),
     )
 
     response = client.post(
@@ -415,8 +488,6 @@ def test_api_gather_with_mocked_live_google_includes_location(
         json={
             "name": QUERY_NAME,
             "city": QUERY_CITY,
-            "backend": "pipeline",
-            "dry_run": True,
             "live_google": True,
         },
     )

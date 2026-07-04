@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from restaurant_agent.gather_result import (
     build_gather_run_result,
+    enrich_graph_trace,
     summarize_graph_update,
 )
 from restaurant_agent.schemas import (
@@ -182,3 +183,69 @@ def test_google_places_summary_includes_rating_and_place_id() -> None:
     assert result.google_places.rating == 4.6
     assert result.google_places.user_rating_count == 812
     assert result.google_places.place_id == "ChIJ123"
+
+
+def test_enrich_graph_trace_adds_observability_metadata() -> None:
+    trace = [
+        GraphNodeExecution(
+            node="gather_search",
+            update={
+                "source_results": [
+                    {
+                        "source_name": "fake_search",
+                        "evidence": [{"snippet": "patio"}],
+                    }
+                ]
+            },
+            duration_ms=12.5,
+        ),
+        GraphNodeExecution(node="success", update={}, duration_ms=0.1),
+    ]
+    enriched = enrich_graph_trace(
+        trace,
+        structured_status="verified",
+        route="success",
+        route_escalated=False,
+    )
+    assert enriched[0].status == "completed"
+    assert enriched[0].evidence_count == 1
+    assert enriched[0].update_type == "source_gather"
+    assert enriched[0].duration_ms == 12.5
+    assert "Structured validation: verified" in enriched[1].summary
+
+
+def test_build_gather_run_result_includes_validation_summary_and_decision_path() -> None:
+    state = _base_state(
+        source_results=[
+            SourceResult(
+                source_name="google_places",
+                evidence=[
+                    Evidence(
+                        source_type=EvidenceSourceType.MAPS,
+                        source_name="google_places",
+                        snippet="Outdoor seating available.",
+                        reliability="high",
+                    )
+                ],
+                structured_attributes=StructuredSourceAttributes(
+                    source="google_places",
+                    outdoor_seating=True,
+                ),
+            )
+        ],
+    )
+    result = build_gather_run_result(
+        state,
+        backend="graph",
+        graph_trace=[
+            GraphNodeExecution(node="success", update={}, duration_ms=1.0),
+        ],
+    )
+    assert result.validation_summary is not None
+    assert result.validation_summary.structured_status == "verified"
+    assert result.validation_summary.route == "success"
+    assert "Claude predicted YES" in result.decision_path
+    assert "Google Places structured outdoor seating=TRUE" in result.decision_path
+    assert "Decision verified" in result.decision_path
+    assert "Route success" in result.decision_path
+    assert result.total_duration_ms == 1.0

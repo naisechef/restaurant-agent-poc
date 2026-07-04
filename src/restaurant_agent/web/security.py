@@ -72,6 +72,10 @@ def _sanitize_graph_trace(
                 node=step.node,
                 update=update,
                 summary=step.summary,
+                duration_ms=step.duration_ms,
+                status=step.status,
+                evidence_count=step.evidence_count,
+                update_type=step.update_type,
             )
         )
     return sanitized

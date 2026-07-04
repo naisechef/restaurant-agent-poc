@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 
-from restaurant_agent.claude_client import ClaudeClient, DryRunClaudeClient
+from restaurant_agent.claude_client import ClaudeClient
 from restaurant_agent.config import (
     MissingAPIKeyError,
     MissingGooglePlacesAPIKeyError,
@@ -12,7 +12,6 @@ from restaurant_agent.config import (
     load_settings,
 )
 from restaurant_agent.gather_graph import run_gather_graph
-from restaurant_agent.gather_pipeline import run_gather
 from restaurant_agent.schemas import GatherRunResult, RestaurantQuery
 from restaurant_agent.sources.factory import build_adapters
 from restaurant_agent.web.api_schemas import GatherRequest
@@ -39,7 +38,7 @@ def run_gather_for_web(
     query = RestaurantQuery(name=request.name, city=request.city)
 
     try:
-        client = DryRunClaudeClient() if request.dry_run else ClaudeClient(settings)
+        client = ClaudeClient(settings)
     except MissingAPIKeyError as exc:
         logger.warning("Missing Anthropic API key for live gather request")
         raise GatherRequestError(
@@ -61,29 +60,14 @@ def run_gather_for_web(
             or "Live Google Places is not configured on the server."
         ) from exc
 
-    if request.backend == "graph":
-        result = run_gather_graph(
-            query,
-            adapters,
-            client,
-            settings.confidence_threshold,
-            dry_run=request.dry_run,
-            live_google=request.live_google,
-        )
-    else:
-        result = run_gather(
-            query,
-            adapters,
-            client,
-            settings.confidence_threshold,
-            dry_run=request.dry_run,
-            live_google=request.live_google,
-        )
-
-    result = result.model_copy(
-        update={
-            "dry_run": request.dry_run,
-            "live_google": request.live_google,
-        }
+    result = run_gather_graph(
+        query,
+        adapters,
+        client,
+        settings.confidence_threshold,
+        dry_run=False,
+        live_google=request.live_google,
     )
+
+    result = result.model_copy(update={"dry_run": False, "live_google": request.live_google})
     return sanitize_gather_result(result)

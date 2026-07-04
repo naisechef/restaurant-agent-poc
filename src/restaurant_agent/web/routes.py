@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import logging
 from pathlib import Path
+from typing import Any
 
 from fastapi import APIRouter, Form, Request
-from fastapi.responses import HTMLResponse, JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse
 from fastapi.templating import Jinja2Templates
 from pydantic import ValidationError
 
@@ -35,7 +36,30 @@ def _validation_error_message(exc: ValidationError) -> str:
     for error in exc.errors():
         if error.get("type") == "missing":
             return "Restaurant name and city are required."
-    return "Invalid request. Check name, city, and backend values."
+    return "Invalid request. Check name and city values."
+
+
+def _empty_form_values() -> dict[str, Any]:
+    return {
+        "name": "",
+        "city": "",
+        "live_google": False,
+    }
+
+
+def _index_context(
+    request: Request,
+    *,
+    result: Any = None,
+    error: str | None = None,
+    form: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    return {
+        "request": request,
+        "result": result,
+        "error": error,
+        "form": form if form is not None else _empty_form_values(),
+    }
 
 
 @router.get("/", response_class=HTMLResponse)
@@ -43,7 +67,7 @@ async def landing_page(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
         request,
         "index.html",
-        {"request": request},
+        _index_context(request),
     )
 
 
@@ -52,40 +76,22 @@ async def health_check() -> dict[str, str]:
     return {"status": "ok"}
 
 
-@router.get("/demo", response_class=HTMLResponse)
-async def demo_form(request: Request) -> HTMLResponse:
-    return templates.TemplateResponse(
-        request,
-        "demo.html",
-        {
-            "request": request,
-            "result": None,
-            "error": None,
-            "form": {
-                "name": "",
-                "city": "",
-                "backend": "pipeline",
-                "dry_run": True,
-                "live_google": False,
-            },
-        },
-    )
+@router.get("/demo")
+async def demo_redirect() -> RedirectResponse:
+    return RedirectResponse(url="/", status_code=307)
 
 
+@router.post("/", response_class=HTMLResponse)
 @router.post("/demo", response_class=HTMLResponse)
-async def demo_submit(
+async def search_submit(
     request: Request,
     name: str = Form(..., max_length=MAX_NAME_LENGTH),
     city: str = Form(..., max_length=MAX_CITY_LENGTH),
-    backend: str = Form("pipeline"),
-    dry_run: str | None = Form(None),
     live_google: str | None = Form(None),
 ) -> HTMLResponse:
     form_values = {
         "name": name.strip(),
         "city": city.strip(),
-        "backend": backend,
-        "dry_run": _parse_form_bool(dry_run),
         "live_google": _parse_form_bool(live_google),
     }
 
@@ -94,13 +100,8 @@ async def demo_submit(
     except ValidationError as exc:
         return templates.TemplateResponse(
             request,
-            "demo.html",
-            {
-                "request": request,
-                "result": None,
-                "error": _validation_error_message(exc),
-                "form": form_values,
-            },
+            "index.html",
+            _index_context(request, error=_validation_error_message(exc), form=form_values),
             status_code=400,
         )
 
@@ -109,38 +110,23 @@ async def demo_submit(
     except GatherRequestError as exc:
         return templates.TemplateResponse(
             request,
-            "demo.html",
-            {
-                "request": request,
-                "result": None,
-                "error": exc.message,
-                "form": form_values,
-            },
+            "index.html",
+            _index_context(request, error=exc.message, form=form_values),
             status_code=400,
         )
     except Exception:
         logger.exception("Unhandled error during demo gather")
         return templates.TemplateResponse(
             request,
-            "demo.html",
-            {
-                "request": request,
-                "result": None,
-                "error": generic_unexpected_error(),
-                "form": form_values,
-            },
+            "index.html",
+            _index_context(request, error=generic_unexpected_error(), form=form_values),
             status_code=500,
         )
 
     return templates.TemplateResponse(
         request,
-        "demo.html",
-        {
-            "request": request,
-            "result": result,
-            "error": None,
-            "form": form_values,
-        },
+        "index.html",
+        _index_context(request, result=result, form=form_values),
     )
 
 

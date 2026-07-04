@@ -143,6 +143,19 @@ class GraphNodeExecution(BaseModel):
     node: str
     update: dict[str, object] = Field(default_factory=dict)
     summary: str = ""
+    duration_ms: float | None = None
+    status: str | None = None
+    evidence_count: int | None = None
+    update_type: str | None = None
+
+
+class ValidationSummary(BaseModel):
+    """Aggregated validation outcome for graph execution observability."""
+
+    pipeline_status: ValidationStatus | None = None
+    route: GatherRoute
+    structured_status: StructuredValidationStatus | None = None
+    route_escalated: bool = False
 
 
 class GooglePlacesSummary(BaseModel):
@@ -188,4 +201,7 @@ class GatherRunResult(BaseModel):
     reliability_mix: dict[str, int] = Field(default_factory=dict)
     google_places: GooglePlacesSummary | None = None
     structured_validations: list[StructuredValidation] = Field(default_factory=list)
+    validation_summary: ValidationSummary | None = None
+    decision_path: list[str] = Field(default_factory=list)
+    total_duration_ms: float | None = None
     graph_trace: list[GraphNodeExecution] | None = None

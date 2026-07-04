@@ -42,3 +42,6 @@ restaurant_agent = ["web/templates/*.html", "web/static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "no_claude_mock: skip autouse ClaudeClient mock for API key error tests",
+]

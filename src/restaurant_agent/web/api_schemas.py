@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from typing import Literal
-
 from pydantic import BaseModel, Field, field_validator
 
 MAX_NAME_LENGTH = 200
@@ -15,8 +13,6 @@ class GatherRequest(BaseModel):
 
     name: str = Field(..., min_length=1, max_length=MAX_NAME_LENGTH)
     city: str = Field(..., min_length=1, max_length=MAX_CITY_LENGTH)
-    backend: Literal["pipeline", "graph"] = "pipeline"
-    dry_run: bool = True
     live_google: bool = False
 
     @field_validator("name", "city", mode="before")
