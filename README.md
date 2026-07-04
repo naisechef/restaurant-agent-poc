@@ -18,6 +18,8 @@ For each row in an input CSV, the pipeline:
 4. Applies business-rule validation and routes low-trust cases to a review queue.
 5. Writes per-record results and prints batch evaluation metrics (accuracy, precision, recall, failure counts).
 
+Alternatively, the **`gather`** command accepts a restaurant name and city, collects evidence from multiple static source adapters in parallel, then runs the same extraction pipeline. See [docs/EVIDENCE_GATHERING.md](docs/EVIDENCE_GATHERING.md).
+
 The sample dataset (`data/restaurants.csv`) includes optional `expected_label` values for offline evaluation. Metrics are illustrative on ~12 rows, not statistically meaningful.
 
 ## Architecture
@@ -57,6 +59,9 @@ Copy `.env.example` to `.env` and adjust as needed.
 | `DEFAULT_INPUT_PATH` | No | `data/restaurants.csv` | Default `--input` path |
 | `DEFAULT_OUTPUT_PATH` | No | `outputs/results.csv` | Default `--output` path |
 | `DEFAULT_REVIEW_QUEUE_PATH` | No | `outputs/review_queue.csv` | Default review queue path |
+| `DEFAULT_GATHER_OUTPUT_PATH` | No | `outputs/gather_results.csv` | Default gather results path |
+| `DEFAULT_GATHER_REVIEW_QUEUE_PATH` | No | `outputs/gather_review_queue.csv` | Default gather review queue path |
+| `DEFAULT_FIXTURES_PATH` | No | `data/evidence_fixtures` | Static evidence fixtures for gather |
 | `LOG_LEVEL` | No | `INFO` | Logging level |
 
 API key validation happens only when constructing the real `ClaudeClient`. Tests and `--dry-run` never require a key.
@@ -67,6 +72,8 @@ After `pip install -e ".[dev]"`, use the `restaurant-agent` console script (reco
 
 ```bash
 restaurant-agent --help
+restaurant-agent run --help
+restaurant-agent gather --help
 ```
 
 Alternatively, run the module directly:
@@ -74,6 +81,8 @@ Alternatively, run the module directly:
 ```bash
 python -m restaurant_agent.cli --help
 ```
+
+### `run` — CSV batch extraction
 
 | Flag | Description |
 |------|-------------|
@@ -86,14 +95,51 @@ python -m restaurant_agent.cli --help
 | `--backend {pipeline,graph}` | Orchestration backend (default: `pipeline`) |
 | `--dry-run` | Deterministic local fake LLM responses; no API calls |
 
+Backward-compatible usage without the `run` subcommand still works:
+
+```bash
+restaurant-agent --dry-run --limit 3
+```
+
+### `gather` — parallel evidence gathering
+
+| Flag | Description |
+|------|-------------|
+| `--name TEXT` | Restaurant name (required) |
+| `--city TEXT` | City (required) |
+| `--fixtures-path PATH` | Static evidence fixtures directory |
+| `--output PATH` | Gather results CSV path |
+| `--review-queue-output PATH` | Gather review queue path |
+| `--backend {pipeline,graph}` | Orchestration backend (default: `pipeline`) |
+| `--dry-run` | Deterministic local LLM; static fixtures for sources |
+
 ### Example: live run
 
 Requires `ANTHROPIC_API_KEY` in `.env` or the environment.
 
 ```bash
-restaurant-agent \
+restaurant-agent run \
   --input data/restaurants.csv \
   --output outputs/results.csv
+```
+
+### Example: gather (dry run)
+
+```bash
+restaurant-agent gather \
+  --name "The River Cafe" \
+  --city "London" \
+  --dry-run
+```
+
+### Example: gather with LangGraph backend
+
+```bash
+restaurant-agent gather \
+  --name "The River Cafe" \
+  --city "London" \
+  --backend graph \
+  --dry-run
 ```
 
 ### Example: dry run (no API key)
@@ -118,6 +164,8 @@ restaurant-agent --backend graph --dry-run --limit 12
 |------|----------|
 | `outputs/results.csv` | One row per processed record with prediction, confidence, evidence, validation status, correctness (when expected labels exist), and errors |
 | `outputs/review_queue.csv` | Subset of results where `needs_review == True` |
+| `outputs/gather_results.csv` | Single-row gather run with source provenance columns |
+| `outputs/gather_review_queue.csv` | Gather subset routed to review |
 
 Generated output files are gitignored; only `outputs/.gitkeep` is tracked.
 
@@ -166,6 +214,7 @@ Unit tests cover preprocessing, validation, evaluation, agents, pipeline orchest
 ## Limitations
 
 - Batch CLI only — no REST API, database, or live scraping.
+- Gather mode uses static JSON fixtures only in v1 (no live web scraping).
 - Single attribute (outdoor seating) in this PoC.
 - Sample evaluation set is too small for meaningful production metrics.
 - `--dry-run` uses simple keyword heuristics, not Claude — useful for local demos, not for measuring extraction quality.
@@ -187,4 +236,5 @@ Unit tests cover preprocessing, validation, evaluation, agents, pipeline orchest
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — system design
 - [docs/LANGGRAPH_ORCHESTRATION.md](docs/LANGGRAPH_ORCHESTRATION.md) — LangGraph backend design
+- [docs/EVIDENCE_GATHERING.md](docs/EVIDENCE_GATHERING.md) — parallel evidence gathering
 - [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) — detailed build specification

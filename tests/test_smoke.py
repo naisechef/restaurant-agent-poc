@@ -33,6 +33,21 @@ def test_cli_help_exits_zero() -> None:
     )
 
     assert result.returncode == 0
+    assert "run" in result.stdout
+    assert "gather" in result.stdout
+
+
+def test_cli_run_help_exits_zero() -> None:
+    result = subprocess.run(
+        [sys.executable, "-m", "restaurant_agent.cli", "run", "--help"],
+        capture_output=True,
+        text=True,
+        cwd=PROJECT_ROOT,
+        env=_SUBPROCESS_ENV,
+        check=False,
+    )
+
+    assert result.returncode == 0
     assert "--dry-run" in result.stdout
     assert "--input" in result.stdout
     assert "--backend" in result.stdout

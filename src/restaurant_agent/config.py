@@ -15,6 +15,9 @@ _DEFAULT_CONFIDENCE_THRESHOLD = 0.6
 _DEFAULT_INPUT_PATH = Path("data/restaurants.csv")
 _DEFAULT_OUTPUT_PATH = Path("outputs/results.csv")
 _DEFAULT_REVIEW_QUEUE_PATH = Path("outputs/review_queue.csv")
+_DEFAULT_GATHER_OUTPUT_PATH = Path("outputs/gather_results.csv")
+_DEFAULT_GATHER_REVIEW_QUEUE_PATH = Path("outputs/gather_review_queue.csv")
+_DEFAULT_FIXTURES_PATH = Path("data/evidence_fixtures")
 _DEFAULT_LOG_LEVEL = "INFO"
 
 
@@ -47,6 +50,11 @@ class Settings(BaseModel):
     input_path: Path = Field(default=_DEFAULT_INPUT_PATH)
     output_path: Path = Field(default=_DEFAULT_OUTPUT_PATH)
     review_queue_path: Path = Field(default=_DEFAULT_REVIEW_QUEUE_PATH)
+    gather_output_path: Path = Field(default=_DEFAULT_GATHER_OUTPUT_PATH)
+    gather_review_queue_path: Path = Field(
+        default=_DEFAULT_GATHER_REVIEW_QUEUE_PATH
+    )
+    fixtures_path: Path = Field(default=_DEFAULT_FIXTURES_PATH)
     log_level: str = _DEFAULT_LOG_LEVEL
 
     def require_api_key(self) -> str:
@@ -113,6 +121,18 @@ def load_settings(*, env_file: str | Path | None = None) -> Settings:
         review_queue_path=_parse_path(
             "DEFAULT_REVIEW_QUEUE_PATH",
             _DEFAULT_REVIEW_QUEUE_PATH,
+        ),
+        gather_output_path=_parse_path(
+            "DEFAULT_GATHER_OUTPUT_PATH",
+            _DEFAULT_GATHER_OUTPUT_PATH,
+        ),
+        gather_review_queue_path=_parse_path(
+            "DEFAULT_GATHER_REVIEW_QUEUE_PATH",
+            _DEFAULT_GATHER_REVIEW_QUEUE_PATH,
+        ),
+        fixtures_path=_parse_path(
+            "DEFAULT_FIXTURES_PATH",
+            _DEFAULT_FIXTURES_PATH,
         ),
         log_level=os.getenv("LOG_LEVEL", _DEFAULT_LOG_LEVEL),
     )

@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+from enum import Enum
 from typing import Literal
 
 from pydantic import BaseModel, Field
 
 OutdoorSeatingLabel = Literal["yes", "no", "unknown"]
+EvidenceReliability = Literal["high", "medium", "low"]
 
 
 class RestaurantRecord(BaseModel):
@@ -38,3 +40,45 @@ class EvaluationSummary(BaseModel):
     low_confidence_count: int
     total_records: int
     failure_count: int
+
+
+class RestaurantQuery(BaseModel):
+    """Input for evidence gathering by restaurant name and city."""
+
+    name: str
+    city: str
+    website_url: str | None = None
+
+
+class EvidenceSourceType(str, Enum):
+    """Category of evidence source."""
+
+    WEBSITE = "website"
+    SEARCH = "search"
+    MAPS = "maps"
+    REVIEW = "review"
+
+
+class Evidence(BaseModel):
+    """A single evidence snippet from a source adapter."""
+
+    source_type: EvidenceSourceType
+    source_name: str
+    url: str | None = None
+    snippet: str
+    reliability: EvidenceReliability = "medium"
+
+
+class SourceResult(BaseModel):
+    """Result from one source adapter invocation."""
+
+    source_name: str
+    evidence: list[Evidence] = Field(default_factory=list)
+    error: str | None = None
+
+
+class GatheredEvidence(BaseModel):
+    """Merged evidence from all sources after deduplication."""
+
+    items: list[Evidence] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
