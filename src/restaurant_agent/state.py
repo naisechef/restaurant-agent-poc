@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from typing import Literal
+import operator
+from typing import Annotated, Literal
 
 from pydantic import BaseModel, Field
 
-from restaurant_agent.schemas import OutdoorSeatingLabel
+from restaurant_agent.schemas import Evidence, OutdoorSeatingLabel, RestaurantQuery, SourceResult
 
 ValidationStatus = Literal["ok", "flagged", "failed"]
 
@@ -24,3 +25,14 @@ class AgentState(BaseModel):
     validation_status: ValidationStatus | None = None
     needs_review: bool = False
     error: str | None = None
+
+
+class GatherState(AgentState):
+    """Extended state for evidence gathering plus extraction pipeline."""
+
+    query: RestaurantQuery | None = None
+    source_results: Annotated[list[SourceResult], operator.add] = Field(
+        default_factory=list
+    )
+    gathered_evidence: list[Evidence] = Field(default_factory=list)
+    gather_errors: list[str] = Field(default_factory=list)

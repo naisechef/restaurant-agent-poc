@@ -15,7 +15,13 @@ _DEFAULT_CONFIDENCE_THRESHOLD = 0.6
 _DEFAULT_INPUT_PATH = Path("data/restaurants.csv")
 _DEFAULT_OUTPUT_PATH = Path("outputs/results.csv")
 _DEFAULT_REVIEW_QUEUE_PATH = Path("outputs/review_queue.csv")
+_DEFAULT_GATHER_OUTPUT_PATH = Path("outputs/gather_results.csv")
+_DEFAULT_GATHER_REVIEW_QUEUE_PATH = Path("outputs/gather_review_queue.csv")
+_DEFAULT_FIXTURES_PATH = Path("data/evidence_fixtures")
 _DEFAULT_LOG_LEVEL = "INFO"
+_DEFAULT_GOOGLE_PLACES_TIMEOUT = 10.0
+_DEFAULT_GOOGLE_PLACES_MAX_REVIEWS = 3
+_DEFAULT_GOOGLE_PLACES_REVIEW_SNIPPET_CHARS = 300
 
 
 class MissingAPIKeyError(RuntimeError):
@@ -26,6 +32,25 @@ class MissingAPIKeyError(RuntimeError):
         message: str = (
             "ANTHROPIC_API_KEY is not set. "
             "Add it to .env or export it in your environment."
+        ),
+    ) -> None:
+        super().__init__(message)
+
+
+class MissingGooglePlacesAPIKeyError(RuntimeError):
+    """Raised when GooglePlacesAdapter is constructed without a configured API key.
+
+    Only raised when the Google live adapter is explicitly selected
+    (`gather --live --source google`) — never for the default static/fake
+    gather flow or the CSV `run` flow.
+    """
+
+    def __init__(
+        self,
+        message: str = (
+            "GOOGLE_PLACES_API_KEY is not set. "
+            "Add it to .env or export it in your environment before using "
+            "'gather --live --source google'."
         ),
     ) -> None:
         super().__init__(message)
@@ -47,7 +72,22 @@ class Settings(BaseModel):
     input_path: Path = Field(default=_DEFAULT_INPUT_PATH)
     output_path: Path = Field(default=_DEFAULT_OUTPUT_PATH)
     review_queue_path: Path = Field(default=_DEFAULT_REVIEW_QUEUE_PATH)
+    gather_output_path: Path = Field(default=_DEFAULT_GATHER_OUTPUT_PATH)
+    gather_review_queue_path: Path = Field(
+        default=_DEFAULT_GATHER_REVIEW_QUEUE_PATH
+    )
+    fixtures_path: Path = Field(default=_DEFAULT_FIXTURES_PATH)
     log_level: str = _DEFAULT_LOG_LEVEL
+    google_places_api_key: str | None = None
+    google_places_timeout: float = Field(
+        default=_DEFAULT_GOOGLE_PLACES_TIMEOUT, gt=0
+    )
+    google_places_max_reviews: int = Field(
+        default=_DEFAULT_GOOGLE_PLACES_MAX_REVIEWS, ge=0
+    )
+    google_places_review_snippet_chars: int = Field(
+        default=_DEFAULT_GOOGLE_PLACES_REVIEW_SNIPPET_CHARS, gt=0
+    )
 
     def require_api_key(self) -> str:
         """Return the API key or raise MissingAPIKeyError.
@@ -57,6 +97,16 @@ class Settings(BaseModel):
         if not self.anthropic_api_key:
             raise MissingAPIKeyError()
         return self.anthropic_api_key
+
+    def require_google_places_api_key(self) -> str:
+        """Return the Google Places API key or raise MissingGooglePlacesAPIKeyError.
+
+        Intended for GooglePlacesAdapter construction — only called when the
+        Google live adapter is explicitly selected via `gather --live --source google`.
+        """
+        if not self.google_places_api_key:
+            raise MissingGooglePlacesAPIKeyError()
+        return self.google_places_api_key
 
 
 def _parse_float(name: str, default: float) -> float:
@@ -95,6 +145,10 @@ def load_settings(*, env_file: str | Path | None = None) -> Settings:
     if api_key is not None and api_key.strip() == "":
         api_key = None
 
+    google_places_api_key = os.getenv("GOOGLE_PLACES_API_KEY")
+    if google_places_api_key is not None and google_places_api_key.strip() == "":
+        google_places_api_key = None
+
     return Settings(
         anthropic_api_key=api_key,
         model=os.getenv("ANTHROPIC_MODEL", _DEFAULT_MODEL),
@@ -114,5 +168,30 @@ def load_settings(*, env_file: str | Path | None = None) -> Settings:
             "DEFAULT_REVIEW_QUEUE_PATH",
             _DEFAULT_REVIEW_QUEUE_PATH,
         ),
+        gather_output_path=_parse_path(
+            "DEFAULT_GATHER_OUTPUT_PATH",
+            _DEFAULT_GATHER_OUTPUT_PATH,
+        ),
+        gather_review_queue_path=_parse_path(
+            "DEFAULT_GATHER_REVIEW_QUEUE_PATH",
+            _DEFAULT_GATHER_REVIEW_QUEUE_PATH,
+        ),
+        fixtures_path=_parse_path(
+            "DEFAULT_FIXTURES_PATH",
+            _DEFAULT_FIXTURES_PATH,
+        ),
         log_level=os.getenv("LOG_LEVEL", _DEFAULT_LOG_LEVEL),
+        google_places_api_key=google_places_api_key,
+        google_places_timeout=_parse_float(
+            "GOOGLE_PLACES_TIMEOUT",
+            _DEFAULT_GOOGLE_PLACES_TIMEOUT,
+        ),
+        google_places_max_reviews=_parse_int(
+            "GOOGLE_PLACES_MAX_REVIEWS",
+            _DEFAULT_GOOGLE_PLACES_MAX_REVIEWS,
+        ),
+        google_places_review_snippet_chars=_parse_int(
+            "GOOGLE_PLACES_REVIEW_SNIPPET_CHARS",
+            _DEFAULT_GOOGLE_PLACES_REVIEW_SNIPPET_CHARS,
+        ),
     )

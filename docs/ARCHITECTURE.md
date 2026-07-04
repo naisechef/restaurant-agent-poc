@@ -180,10 +180,13 @@ The provider-specific name (`claude_client.py`, not `llm_client.py`) reflects wh
 ```
 src/restaurant_agent/
 ├── cli.py, pipeline.py, graph_pipeline.py, config.py
+├── gather.py, evidence_merge.py, gather_pipeline.py, gather_graph.py
 ├── schemas.py, state.py
 ├── data_loader.py, preprocessing.py, validation.py, evaluation.py
 ├── claude_client.py, logging_config.py
 ├── prompts/outdoor_seating.py
+├── sources/
+│   ├── base.py, fake.py, static_search.py, google_places.py, factory.py
 └── agents/
     ├── preprocessing_agent.py
     ├── extraction_agent.py
@@ -202,6 +205,25 @@ START → preprocess → extract → validate → route
 ```
 
 Terminal nodes are pass-through in the current PoC — they exist to demonstrate routing and to host future hooks (metrics, retry, human-in-the-loop). `run_graph_pipeline()` reuses CSV writing, row conversion, and evaluation from `pipeline.py`.
+
+## Evidence gathering
+
+The `gather` CLI command adds a second input mode: restaurant name + city instead of pre-collected CSV evidence. See [EVIDENCE_GATHERING.md](EVIDENCE_GATHERING.md) for full detail.
+
+```
+name + city → source adapters (parallel) → merge/dedup → AgentState.raw_text
+    → preprocessing → extraction → validation → gather_results.csv
+```
+
+| Module | Responsibility |
+|--------|----------------|
+| `sources/` | `SourceAdapter` protocol, `FakeSourceAdapter`, `StaticSearchAdapter`, `GooglePlacesAdapter` (optional live `maps` source, `gather --live --source google`), factory |
+| `gather.py` | Parallel adapter execution with per-source failure isolation |
+| `evidence_merge.py` | Dedup, reliability ordering, combined evidence text |
+| `gather_pipeline.py` | Imperative gather orchestration |
+| `gather_graph.py` | LangGraph fan-out/fan-in gather orchestration |
+
+The CSV `run` path is unchanged. Gather reuses the same agents without modification.
 
 ## Key design decisions
 
