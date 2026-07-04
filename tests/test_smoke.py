@@ -38,8 +38,8 @@ def test_cli_help_exits_zero() -> None:
     assert "--backend" in result.stdout
 
 
-def test_cli_dry_run_smoke(tmp_path: Path) -> None:
-    """Run the full CLI entry point without network or API key."""
+def test_cli_main_dry_run_smoke(tmp_path: Path) -> None:
+    """Invoke cli.main() directly (no installed console script required)."""
     output_path = tmp_path / "results.csv"
     review_path = tmp_path / "review_queue.csv"
 
@@ -101,8 +101,8 @@ def test_cli_dry_run_subprocess_smoke(tmp_path: Path) -> None:
     assert len(pd.read_csv(output_path)) == 2
 
 
-def test_cli_graph_backend_dry_run_smoke(tmp_path: Path) -> None:
-    """Run the LangGraph backend via CLI without network or API key."""
+def test_cli_main_graph_backend_dry_run_smoke(tmp_path: Path) -> None:
+    """Invoke cli.main() with --backend graph (no installed console script)."""
     output_path = tmp_path / "results.csv"
     review_path = tmp_path / "review_queue.csv"
 

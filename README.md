@@ -63,6 +63,14 @@ API key validation happens only when constructing the real `ClaudeClient`. Tests
 
 ## CLI usage
 
+After `pip install -e ".[dev]"`, use the `restaurant-agent` console script (recommended):
+
+```bash
+restaurant-agent --help
+```
+
+Alternatively, run the module directly:
+
 ```bash
 python -m restaurant_agent.cli --help
 ```
@@ -83,7 +91,7 @@ python -m restaurant_agent.cli --help
 Requires `ANTHROPIC_API_KEY` in `.env` or the environment.
 
 ```bash
-python -m restaurant_agent.cli \
+restaurant-agent \
   --input data/restaurants.csv \
   --output outputs/results.csv
 ```
@@ -93,7 +101,7 @@ python -m restaurant_agent.cli \
 Runs the full pipeline shape with heuristic local responses:
 
 ```bash
-python -m restaurant_agent.cli --dry-run --limit 3
+restaurant-agent --dry-run --limit 3
 ```
 
 ### Example: LangGraph backend (dry run)
@@ -101,7 +109,7 @@ python -m restaurant_agent.cli --dry-run --limit 3
 Same behaviour as the default pipeline, using LangGraph orchestration:
 
 ```bash
-python -m restaurant_agent.cli --backend graph --dry-run --limit 3
+restaurant-agent --backend graph --dry-run --limit 12
 ```
 
 ## Output files
