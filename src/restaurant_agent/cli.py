@@ -136,6 +136,23 @@ def _build_parser() -> argparse.ArgumentParser:
         default=settings.fixtures_path,
         help=f"Static evidence fixtures directory (default: {settings.fixtures_path})",
     )
+    gather_parser.add_argument(
+        "--live",
+        action="store_true",
+        help=(
+            "Enable a live evidence source for the 'maps' role instead of "
+            "static fixtures (see --source; requires GOOGLE_PLACES_API_KEY)"
+        ),
+    )
+    gather_parser.add_argument(
+        "--source",
+        choices=("google",),
+        default=None,
+        help=(
+            "Live source provider to use with --live (default: google when "
+            "--live is set). Passing --source without --live is an error."
+        ),
+    )
     _add_shared_run_flags(gather_parser, settings)
 
     return parser
@@ -224,10 +241,31 @@ def _run_command(args: argparse.Namespace, settings: Settings) -> int:
     return 0
 
 
-def _gather_command(args: argparse.Namespace, settings: Settings) -> int:
+def _resolve_live_source(args: argparse.Namespace, parser: argparse.ArgumentParser) -> str | None:
+    """Return the live source name, or None for the default static/fake flow.
+
+    --source only has meaning alongside --live; passing it alone is a usage
+    error rather than a silently ignored flag.
+    """
+    if not args.live:
+        if args.source is not None:
+            parser.error("--source requires --live")
+        return None
+    return args.source or "google"
+
+
+def _gather_command(
+    args: argparse.Namespace, settings: Settings, parser: argparse.ArgumentParser
+) -> int:
     client = _build_client(args, settings)
     query = RestaurantQuery(name=args.name, city=args.city)
-    adapters = build_adapters(args.fixtures_path, dry_run=args.dry_run)
+    live_source = _resolve_live_source(args, parser)
+    adapters = build_adapters(
+        args.fixtures_path,
+        dry_run=args.dry_run,
+        live_source=live_source,
+        settings=settings,
+    )
 
     if args.backend == "graph":
         state = run_gather_graph_pipeline(
@@ -266,7 +304,7 @@ def main(argv: list[str] | None = None) -> int:
     configure_logging(settings.log_level)
 
     if command == "gather":
-        return _gather_command(args, settings)
+        return _gather_command(args, settings, parser)
     return _run_command(args, settings)
 
 

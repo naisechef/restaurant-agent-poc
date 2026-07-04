@@ -63,8 +63,12 @@ Copy `.env.example` to `.env` and adjust as needed.
 | `DEFAULT_GATHER_REVIEW_QUEUE_PATH` | No | `outputs/gather_review_queue.csv` | Default gather review queue path |
 | `DEFAULT_FIXTURES_PATH` | No | `data/evidence_fixtures` | Static evidence fixtures for gather |
 | `LOG_LEVEL` | No | `INFO` | Logging level |
+| `GOOGLE_PLACES_API_KEY` | `gather --live --source google` only | — | Google Places API key (see [Google Places setup](#google-places-setup-optional-live-adapter)) |
+| `GOOGLE_PLACES_TIMEOUT` | No | `10` | Per-request timeout (seconds) for Text Search / Place Details |
+| `GOOGLE_PLACES_MAX_REVIEWS` | No | `3` | Max review snippets converted to evidence per gather call |
+| `GOOGLE_PLACES_REVIEW_SNIPPET_CHARS` | No | `300` | Max characters per review snippet |
 
-API key validation happens only when constructing the real `ClaudeClient`. Tests and `--dry-run` never require a key.
+API key validation happens only when constructing the real `ClaudeClient`, or when `gather --live --source google` is used. Tests, `--dry-run`, and the default gather flow never require either key.
 
 ## CLI usage
 
@@ -112,6 +116,8 @@ restaurant-agent --dry-run --limit 3
 | `--review-queue-output PATH` | Gather review queue path |
 | `--backend {pipeline,graph}` | Orchestration backend (default: `pipeline`) |
 | `--dry-run` | Deterministic local LLM; static fixtures for sources |
+| `--live` | Use a live source instead of static fixtures for the `maps` role (see `--source`) |
+| `--source {google}` | Live source provider to use with `--live` (default: `google`); has no effect without `--live` |
 
 ### Example: live run
 
@@ -142,6 +148,19 @@ restaurant-agent gather \
   --dry-run
 ```
 
+### Example: gather with the live Google Places adapter
+
+Requires `GOOGLE_PLACES_API_KEY` — see [Google Places setup](#google-places-setup-optional-live-adapter). All other source roles (`search`, `reviews`, `website`) remain static/fake; only the `maps` role becomes live.
+
+```bash
+restaurant-agent gather \
+  --name "The River Cafe" \
+  --city "London" \
+  --backend graph \
+  --live \
+  --source google
+```
+
 ### Example: dry run (no API key)
 
 Runs the full pipeline shape with heuristic local responses:
@@ -157,6 +176,26 @@ Same behaviour as the default pipeline, using LangGraph orchestration:
 ```bash
 restaurant-agent --backend graph --dry-run --limit 12
 ```
+
+## Google Places setup (optional live adapter)
+
+`gather --live --source google` replaces the static `maps` source with a live lookup against the **official Google Places API (New)** — Text Search followed by Place Details with an explicit field mask. No other source (Google Maps scraping, Google Search, Google Reviews pages, Tripadvisor, or website crawling) is used.
+
+1. Enable the "Places API (New)" for a Google Cloud project and create an API key.
+2. Add it to `.env`:
+
+   ```bash
+   GOOGLE_PLACES_API_KEY=your-key-here
+   ```
+
+3. Run gather with `--live --source google` (see example above).
+
+Notes:
+
+- The key is only required when `--live --source google` is selected — the default gather flow, `run`, and the full test suite never need it.
+- Exactly one Text Search request and one Place Details request are made per gather call; the field mask never uses a wildcard, keeping cost and payload size bounded.
+- `websiteUri` returned by Google Places is stored only as a citation URL — it is never fetched or crawled. Website crawling is out of scope for this adapter and may become a separate adapter later.
+- See [docs/EVIDENCE_GATHERING.md](docs/EVIDENCE_GATHERING.md) for the evidence-mapping details and safeguards.
 
 ## Output files
 
@@ -213,8 +252,8 @@ Unit tests cover preprocessing, validation, evaluation, agents, pipeline orchest
 
 ## Limitations
 
-- Batch CLI only — no REST API, database, or live scraping.
-- Gather mode uses static JSON fixtures only in v1 (no live web scraping).
+- Batch CLI only — no REST API or database.
+- Gather mode uses static JSON fixtures by default; an optional live Google Places adapter is available via `--live --source google` for the `maps` role only (no scraping of Google Maps/Search/Reviews pages, no other live sources, no website crawling).
 - Single attribute (outdoor seating) in this PoC.
 - Sample evaluation set is too small for meaningful production metrics.
 - `--dry-run` uses simple keyword heuristics, not Claude — useful for local demos, not for measuring extraction quality.

@@ -7,9 +7,11 @@ from pathlib import Path
 
 import pytest
 
+from restaurant_agent.config import MissingGooglePlacesAPIKeyError, Settings
 from restaurant_agent.schemas import Evidence, EvidenceSourceType, RestaurantQuery
 from restaurant_agent.sources.factory import build_adapters
 from restaurant_agent.sources.fake import FakeSourceAdapter
+from restaurant_agent.sources.google_places import GooglePlacesAdapter
 from restaurant_agent.sources.static_search import StaticSearchAdapter
 
 QUERY = RestaurantQuery(name="The River Cafe", city="London")
@@ -109,3 +111,29 @@ def test_build_adapters_static(fixtures_dir: Path) -> None:
     search_results = adapters["search"].gather(QUERY)
     assert len(search_results) == 1
     assert adapters["website"].gather(QUERY) == []
+
+
+def test_build_adapters_live_google_missing_key_raises(fixtures_dir: Path) -> None:
+    settings = Settings(google_places_api_key=None)
+    with pytest.raises(MissingGooglePlacesAPIKeyError):
+        build_adapters(fixtures_dir, live_source="google", settings=settings)
+
+
+def test_build_adapters_live_google_swaps_maps_slot_only(fixtures_dir: Path) -> None:
+    settings = Settings(google_places_api_key="test-key")
+    adapters = build_adapters(fixtures_dir, live_source="google", settings=settings)
+
+    assert isinstance(adapters["maps"], GooglePlacesAdapter)
+    assert isinstance(adapters["search"], StaticSearchAdapter)
+    assert isinstance(adapters["reviews"], StaticSearchAdapter)
+    assert isinstance(adapters["website"], FakeSourceAdapter)
+
+
+def test_build_adapters_without_live_source_never_requires_google_key(
+    fixtures_dir: Path,
+) -> None:
+    settings = Settings(google_places_api_key=None)
+    # Must not raise even though the Google key is unset, since Google is
+    # never selected here.
+    adapters = build_adapters(fixtures_dir, dry_run=True, settings=settings)
+    assert isinstance(adapters["maps"], StaticSearchAdapter)

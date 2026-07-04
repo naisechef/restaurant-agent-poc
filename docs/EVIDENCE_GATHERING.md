@@ -38,14 +38,71 @@ flowchart TD
 
 The graph backend uses true LangGraph parallel branches. Each gather node writes to `source_results` via an `operator.add` reducer. Downstream agent nodes return partial state updates to avoid re-accumulating source results.
 
-## Source adapters (v1)
+## Source adapters
 
 | Adapter | Role | Behaviour |
 |---------|------|-----------|
 | `FakeSourceAdapter` | Tests, empty website slot | Returns canned evidence or raises when configured |
-| `StaticSearchAdapter` | search, reviews, maps | Loads snippets from JSON fixtures keyed by `name\|city` |
+| `StaticSearchAdapter` | search, reviews, maps (default) | Loads snippets from JSON fixtures keyed by `name\|city` |
+| `GooglePlacesAdapter` | maps (opt-in, replaces `StaticSearchAdapter` for that role only) | Live lookup against the official Google Places API (New) |
 
-Fixtures live in `data/evidence_fixtures/` (`search.json`, `reviews.json`, `maps.json`). No live web scraping in v1.
+Fixtures live in `data/evidence_fixtures/` (`search.json`, `reviews.json`, `maps.json`). By default no live web scraping or live API calls happen at all; the Google Places adapter is opt-in via `--live --source google` (see below).
+
+## Live Google Places adapter
+
+`gather --live --source google` swaps the `maps` role from `StaticSearchAdapter` to `GooglePlacesAdapter` in `sources/factory.py::build_adapters()`. The `search`, `reviews`, and `website` roles are unaffected and remain static/fake. No changes were needed in `gather.py`, `gather_pipeline.py`, `gather_graph.py`, or `evidence_merge.py` — `GooglePlacesAdapter` satisfies the same `SourceAdapter` protocol as every other adapter.
+
+### Request flow
+
+Exactly one Text Search request and one Place Details request are made per `gather()` call — never more, and never with a wildcard field mask:
+
+```mermaid
+flowchart TD
+    gather["GooglePlacesAdapter.gather(query)"] --> search["Text Search: places:searchText\n(1 request)"]
+    search -->|no candidates| empty["return []"]
+    search -->|candidate found| details["Place Details: places/{id}\n+ explicit FieldMask (1 request)"]
+    details --> placeEvidence["_build_place_evidence() -> MAPS evidence"]
+    details --> reviewEvidence["_build_review_evidence() -> REVIEW evidence"]
+    placeEvidence --> combined["combined list[Evidence]"]
+    reviewEvidence --> combined
+```
+
+Place Details FieldMask: `id,displayName,formattedAddress,googleMapsUri,websiteUri,outdoorSeating,rating,userRatingCount,reviews,reviewSummary,editorialSummary`.
+
+### Evidence mapping
+
+| Google Places field | Builder | `Evidence.source_type` | `Evidence.reliability` |
+|---|---|---|---|
+| `outdoorSeating: true` / `false` | `_build_place_evidence` | `MAPS` | `high` |
+| `outdoorSeating` absent | `_build_place_evidence` | — (no evidence emitted) | — |
+| `reviewSummary` | `_build_place_evidence` | `MAPS` | `medium` |
+| `editorialSummary` | `_build_place_evidence` | `MAPS` | `medium` |
+| `reviews[]` (up to `GOOGLE_PLACES_MAX_REVIEWS`, truncated to `GOOGLE_PLACES_REVIEW_SNIPPET_CHARS`) | `_build_review_evidence` | `REVIEW` | `low` |
+| `rating` / `userRatingCount` | — | logged only (observability), not converted to evidence | — |
+| `googleMapsUri` | — | used as `Evidence.url` (provenance) on the items above | — |
+| `websiteUri` | — | used as `Evidence.url` (provenance) on the editorial-summary item only; **never fetched or crawled** | — |
+
+All Google-sourced evidence uses `source_name="google_places"`. No new `EvidenceSourceType` enum value was added — `MAPS` and `REVIEW` are reused, matching how `static_maps`/`static_reviews` already provide those types.
+
+### Safeguards
+
+- One Text Search + one Place Details request per gather call — no retries, no pagination.
+- Explicit FieldMasks only — never `"*"`.
+- Configurable timeout (`GOOGLE_PLACES_TIMEOUT`, default 10s).
+- HTTP access is isolated behind a `PlacesTransport` protocol; the real `HttpxPlacesTransport` uses a shared `httpx.Client`. Failures (`GooglePlacesError`) are caught by the existing `run_adapter_safe()` and become `SourceResult.error` — one failed live lookup never aborts the batch.
+- `GOOGLE_PLACES_API_KEY` is only required when `--live --source google` is selected (`build_adapters()` calls `Settings.require_google_places_api_key()` at construction time in that branch only).
+
+### Observability
+
+Each successful `gather()` call emits one informational log block (search latency, candidate count, selected place summary, evidence-extracted checklist) via the module logger. This is logging only and never changes `Evidence`, `SourceResult`, or CSV output — see `sources/google_places.py::_log_summary()`.
+
+### CLI usage
+
+```bash
+restaurant-agent gather --name "The River Cafe" --city "London" --live --source google
+```
+
+`--source` currently only accepts `google` and has no effect unless `--live` is also passed (passing `--source` without `--live` is a CLI usage error). See [README.md](../README.md#google-places-setup-optional-live-adapter) for setup.
 
 ## Data contracts
 
@@ -89,15 +146,17 @@ Gather results are written to `outputs/gather_results.csv` with columns includin
 
 ## Testing
 
-All gather tests use `FakeSourceAdapter` or static fixtures — no network calls.
+All gather tests — including the Google Places adapter — use `FakeSourceAdapter`, static fixtures, or a fake/mocked HTTP transport (`httpx.MockTransport`). No test contacts the network.
 
 ```bash
 pytest tests/test_source_adapters.py tests/test_gather.py tests/test_evidence_merge.py
 pytest tests/test_gather_pipeline.py tests/test_gather_graph.py tests/test_cli_gather.py
+pytest tests/test_google_places_adapter.py
 ```
 
 ## Future extensions
 
-- Optional live adapters (website fetch, search API) behind explicit flags
+- Additional live adapters (website fetch, search API, other map/review providers) behind explicit flags
+- Additional Google Places candidate fields (opening hours, accessibility, payment methods, dog-friendly, reservations, parking, wheelchair access) via new `_build_*_evidence()` methods
 - Semantic deduplication and conflict resolution
 - Batch gather mode for multiple restaurants

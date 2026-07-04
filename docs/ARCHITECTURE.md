@@ -186,7 +186,7 @@ src/restaurant_agent/
 ├── claude_client.py, logging_config.py
 ├── prompts/outdoor_seating.py
 ├── sources/
-│   ├── base.py, fake.py, static_search.py, factory.py
+│   ├── base.py, fake.py, static_search.py, google_places.py, factory.py
 └── agents/
     ├── preprocessing_agent.py
     ├── extraction_agent.py
@@ -217,7 +217,7 @@ name + city → source adapters (parallel) → merge/dedup → AgentState.raw_te
 
 | Module | Responsibility |
 |--------|----------------|
-| `sources/` | `SourceAdapter` protocol, `FakeSourceAdapter`, `StaticSearchAdapter`, factory |
+| `sources/` | `SourceAdapter` protocol, `FakeSourceAdapter`, `StaticSearchAdapter`, `GooglePlacesAdapter` (optional live `maps` source, `gather --live --source google`), factory |
 | `gather.py` | Parallel adapter execution with per-source failure isolation |
 | `evidence_merge.py` | Dedup, reliability ordering, combined evidence text |
 | `gather_pipeline.py` | Imperative gather orchestration |
