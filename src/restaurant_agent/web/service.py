@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 
 from restaurant_agent.claude_client import ClaudeClient
 from restaurant_agent.config import (
@@ -12,6 +13,7 @@ from restaurant_agent.config import (
     load_settings,
 )
 from restaurant_agent.gather_graph import run_gather_graph
+from restaurant_agent.logging_config import log_event
 from restaurant_agent.schemas import GatherRunResult, RestaurantQuery
 from restaurant_agent.sources.factory import build_adapters
 from restaurant_agent.web.api_schemas import GatherRequest
@@ -32,15 +34,35 @@ def run_gather_for_web(
     request: GatherRequest,
     *,
     settings: Settings | None = None,
+    request_id: str | None = None,
 ) -> GatherRunResult:
     """Execute exactly one gather operation and return a sanitized result."""
     settings = settings or load_settings()
     query = RestaurantQuery(name=request.name, city=request.city)
+    started = time.perf_counter()
+
+    log_event(
+        logger,
+        logging.INFO,
+        "gather started",
+        request_id=request_id,
+        restaurant=request.name,
+        city=request.city,
+        stage="gather_start",
+    )
 
     try:
         client = ClaudeClient(settings)
     except MissingAPIKeyError as exc:
-        logger.warning("Missing Anthropic API key for live gather request")
+        log_event(
+            logger,
+            logging.WARNING,
+            "missing anthropic api key",
+            request_id=request_id,
+            restaurant=request.name,
+            city=request.city,
+            stage="config_error",
+        )
         raise GatherRequestError(
             sanitize_user_message(str(exc))
             or "Live Claude API is not configured on the server."
@@ -54,7 +76,15 @@ def run_gather_for_web(
             settings=settings,
         )
     except MissingGooglePlacesAPIKeyError as exc:
-        logger.warning("Missing Google Places API key for live gather request")
+        log_event(
+            logger,
+            logging.WARNING,
+            "missing google places api key",
+            request_id=request_id,
+            restaurant=request.name,
+            city=request.city,
+            stage="config_error",
+        )
         raise GatherRequestError(
             sanitize_user_message(str(exc))
             or "Live Google Places is not configured on the server."
@@ -70,4 +100,16 @@ def run_gather_for_web(
     )
 
     result = result.model_copy(update={"dry_run": False, "live_google": request.live_google})
-    return sanitize_gather_result(result)
+    sanitized = sanitize_gather_result(result)
+    duration_ms = round((time.perf_counter() - started) * 1000, 2)
+    log_event(
+        logger,
+        logging.INFO,
+        "gather completed",
+        request_id=request_id,
+        restaurant=request.name,
+        city=request.city,
+        stage="gather_complete",
+        duration_ms=duration_ms,
+    )
+    return sanitized

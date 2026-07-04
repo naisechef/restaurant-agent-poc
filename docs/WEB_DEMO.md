@@ -30,6 +30,10 @@ Open [http://127.0.0.1:8080/demo](http://127.0.0.1:8080/demo).
 
 Default form settings (dry-run + static fixtures) require **no API keys** and make **no external network calls**.
 
+## Cloud Run deployment
+
+See [docs/CLOUD_RUN_DEPLOYMENT.md](docs/CLOUD_RUN_DEPLOYMENT.md) for prerequisites, Secret Manager setup, `gcloud run deploy --source .`, local Docker smoke tests, and a deployed verification checklist.
+
 ## Docker run
 
 ```bash
@@ -48,51 +52,14 @@ docker run --rm -p 8080:8080 \
 
 The image includes `data/evidence_fixtures` for server-side static adapters only; fixtures are not served over HTTP.
 
-## Cloud Run deployment
-
-### 1. Store secrets in Secret Manager
-
-```bash
-echo -n "your-anthropic-key" | gcloud secrets create anthropic-key --data-file=-
-echo -n "your-google-places-key" | gcloud secrets create google-places-key --data-file=-
-```
-
-Do **not** put secrets in the Dockerfile, `.env` committed to git, or container environment files checked into the repo.
-
-### 2. Deploy
-
-```bash
-gcloud run deploy restaurant-agent-web \
-  --source . \
-  --region europe-west1 \
-  --allow-unauthenticated \
-  --set-secrets=ANTHROPIC_API_KEY=anthropic-key:latest,GOOGLE_PLACES_API_KEY=google-places-key:latest \
-  --set-env-vars=CONFIDENCE_THRESHOLD=0.6,DEFAULT_FIXTURES_PATH=/app/data/evidence_fixtures \
-  --timeout=60 \
-  --concurrency=4 \
-  --min-instances=0
-```
-
-For a non-public deployment, omit `--allow-unauthenticated` and use [Identity-Aware Proxy (IAP)](https://cloud.google.com/iap) or Cloud Run authenticated invokers instead.
-
-### 3. GCP security recommendations
-
-| Practice | Why |
-|----------|-----|
-| Secret Manager for API keys | Keys are injected at runtime, not stored in images or source |
-| No secrets in Docker image | Images are often shared; layers are inspectable |
-| Restrict Google API key to Places API only | Limits blast radius if a key leaks |
-| Minimal Cloud Run service account | Grant only `secretmanager.secretAccessor` (if using secrets) |
-| IAP / authenticated access for production | Public demo is fine for dry-run; live modes cost money |
-| Match Cloud Run `--timeout` to `ANTHROPIC_REQUEST_TIMEOUT` | Prevents hung requests |
-
 ## Endpoints
 
 | Method | Path | Description |
 |--------|------|-------------|
 | `GET` | `/` | Landing page |
 | `GET` | `/health` | Liveness probe (`{"status":"ok"}`) |
-| `GET` | `/demo` | Gather form |
+| `GET` | `/ready` | Readiness probe (local config checks; see [CLOUD_RUN_DEPLOYMENT.md](CLOUD_RUN_DEPLOYMENT.md)) |
+| `GET` | `/demo` | Redirects to `/` |
 | `POST` | `/demo` | Submit form; returns HTML results |
 | `POST` | `/api/gather` | JSON API |
 
@@ -175,5 +142,6 @@ Same as the CLI — see [`.env.example`](../.env.example).
 | `CONFIDENCE_THRESHOLD` | No | `0.6` |
 | `ANTHROPIC_REQUEST_TIMEOUT` | No | `60` |
 | `LOG_LEVEL` | No | `INFO` |
+| `LIVE_GOOGLE_REQUIRED` | No | `false` | When `true`, `/ready` requires `GOOGLE_PLACES_API_KEY` |
 
 The CLI is unchanged; use `restaurant-agent gather ...` for CSV-based workflows.

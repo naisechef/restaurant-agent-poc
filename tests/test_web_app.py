@@ -102,6 +102,110 @@ def test_get_health(client: TestClient) -> None:
     assert response.json() == {"status": "ok"}
 
 
+def test_health_ok_when_api_keys_set(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DEFAULT_FIXTURES_PATH", str(FIXTURES_PATH))
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-secret-test-key")
+    monkeypatch.setenv("GOOGLE_PLACES_API_KEY", "google-secret-test-key")
+    with TestClient(create_app()) as test_client:
+        response = test_client.get("/health")
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok"}
+    text = response.text.lower()
+    assert "sk-secret" not in text
+    assert "google-secret" not in text
+    assert "anthropic_api_key" not in text
+
+
+def test_get_ready_not_ready_without_api_keys(client: TestClient) -> None:
+    response = client.get("/ready")
+    assert response.status_code == 503
+    payload = response.json()
+    assert payload["status"] == "not_ready"
+    assert payload["checks"]["anthropic_api_key"]["ok"] is False
+    assert payload["checks"]["fixtures_path"]["ok"] is True
+
+
+def test_get_ready_when_configured(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setenv("DEFAULT_FIXTURES_PATH", str(FIXTURES_PATH))
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
+    monkeypatch.setenv("GOOGLE_PLACES_API_KEY", "test-google-key")
+    with TestClient(create_app()) as test_client:
+        response = test_client.get("/ready")
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["status"] == "ready"
+    assert payload["checks"]["anthropic_api_key"]["ok"] is True
+    assert payload["checks"]["google_places_api_key"]["ok"] is True
+    assert payload["checks"]["fixtures_path"]["ok"] is True
+
+
+def test_get_ready_requires_google_key_when_live_google_required(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DEFAULT_FIXTURES_PATH", str(FIXTURES_PATH))
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-anthropic-key")
+    monkeypatch.setenv("LIVE_GOOGLE_REQUIRED", "true")
+    monkeypatch.delenv("GOOGLE_PLACES_API_KEY", raising=False)
+    with TestClient(create_app()) as test_client:
+        response = test_client.get("/ready")
+    assert response.status_code == 503
+    payload = response.json()
+    assert payload["status"] == "not_ready"
+    assert payload["checks"]["google_places_api_key"]["required"] is True
+    assert payload["checks"]["google_places_api_key"]["ok"] is False
+
+
+def test_request_id_header_on_responses(client: TestClient) -> None:
+    response = client.get("/health")
+    assert response.status_code == 200
+    request_id = response.headers.get("X-Request-ID")
+    assert request_id
+    assert len(request_id) >= 8
+
+
+def test_request_id_propagated_from_client_header(client: TestClient) -> None:
+    response = client.get("/health", headers={"X-Request-ID": "test-request-123"})
+    assert response.status_code == 200
+    assert response.headers.get("X-Request-ID") == "test-request-123"
+
+
+def test_landing_page_never_exposes_api_keys_when_set(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("DEFAULT_FIXTURES_PATH", str(FIXTURES_PATH))
+    monkeypatch.setenv("ANTHROPIC_API_KEY", "sk-secret-test-key")
+    monkeypatch.setenv("GOOGLE_PLACES_API_KEY", "google-secret-test-key")
+    with TestClient(create_app()) as test_client:
+        response = test_client.get("/")
+    assert response.status_code == 200
+    text = response.text.lower()
+    assert "sk-secret" not in text
+    assert "google-secret" not in text
+    assert "anthropic_api_key" not in text
+
+
+def test_structured_logging_includes_request_id(
+    client: TestClient, caplog: pytest.LogCaptureFixture
+) -> None:
+    with caplog.at_level("INFO", logger="restaurant_agent.web.middleware"):
+        response = client.get("/health", headers={"X-Request-ID": "log-test-id"})
+    assert response.status_code == 200
+    middleware_records = [
+        record
+        for record in caplog.records
+        if record.name == "restaurant_agent.web.middleware"
+    ]
+    assert middleware_records
+    assert any(
+        getattr(record, "request_id", None) == "log-test-id"
+        for record in middleware_records
+    )
+    assert any(
+        getattr(record, "stage", None) == "request_complete"
+        for record in middleware_records
+    )
+
+
 def test_get_demo_redirects_to_landing(client: TestClient) -> None:
     response = client.get("/demo", follow_redirects=False)
     assert response.status_code == 307

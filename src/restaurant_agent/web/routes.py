@@ -17,6 +17,8 @@ from restaurant_agent.web.api_schemas import (
     GatherErrorResponse,
     GatherRequest,
 )
+from restaurant_agent.logging_config import log_event
+from restaurant_agent.web.readiness import evaluate_readiness
 from restaurant_agent.web.security import generic_unexpected_error, sanitize_user_message
 from restaurant_agent.web.service import GatherRequestError, run_gather_for_web
 
@@ -76,6 +78,13 @@ async def health_check() -> dict[str, str]:
     return {"status": "ok"}
 
 
+@router.get("/ready")
+async def readiness_check() -> JSONResponse:
+    payload = evaluate_readiness()
+    status_code = 200 if payload["status"] == "ready" else 503
+    return JSONResponse(status_code=status_code, content=payload)
+
+
 @router.get("/demo")
 async def demo_redirect() -> RedirectResponse:
     return RedirectResponse(url="/", status_code=307)
@@ -105,9 +114,22 @@ async def search_submit(
             status_code=400,
         )
 
+    request_id = getattr(request.state, "request_id", None)
     try:
-        result = run_gather_for_web(gather_request)
+        result = run_gather_for_web(
+            gather_request,
+            request_id=request_id,
+        )
     except GatherRequestError as exc:
+        log_event(
+            logger,
+            logging.WARNING,
+            "demo gather rejected",
+            request_id=request_id,
+            restaurant=form_values["name"],
+            city=form_values["city"],
+            stage="gather_rejected",
+        )
         return templates.TemplateResponse(
             request,
             "index.html",
@@ -115,6 +137,15 @@ async def search_submit(
             status_code=400,
         )
     except Exception:
+        log_event(
+            logger,
+            logging.ERROR,
+            "demo gather failed",
+            request_id=request_id,
+            restaurant=form_values["name"],
+            city=form_values["city"],
+            stage="gather_error",
+        )
         logger.exception("Unhandled error during demo gather")
         return templates.TemplateResponse(
             request,
@@ -131,16 +162,35 @@ async def search_submit(
 
 
 @router.post("/api/gather")
-async def api_gather(request_body: GatherRequest) -> JSONResponse:
+async def api_gather(request: Request, request_body: GatherRequest) -> JSONResponse:
+    request_id = getattr(request.state, "request_id", None)
     try:
-        result = run_gather_for_web(request_body)
+        result = run_gather_for_web(request_body, request_id=request_id)
         return JSONResponse(content=result.model_dump(mode="json"))
     except GatherRequestError as exc:
+        log_event(
+            logger,
+            logging.WARNING,
+            "api gather rejected",
+            request_id=request_id,
+            restaurant=request_body.name,
+            city=request_body.city,
+            stage="gather_rejected",
+        )
         return JSONResponse(
             status_code=400,
             content=GatherErrorResponse(message=exc.message).model_dump(),
         )
     except Exception:
+        log_event(
+            logger,
+            logging.ERROR,
+            "api gather failed",
+            request_id=request_id,
+            restaurant=request_body.name,
+            city=request_body.city,
+            stage="gather_error",
+        )
         logger.exception("Unhandled error during API gather")
         return JSONResponse(
             status_code=500,

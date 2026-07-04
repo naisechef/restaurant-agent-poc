@@ -20,7 +20,7 @@ For each row in an input CSV, the pipeline:
 
 Alternatively, the **`gather`** command accepts a restaurant name and city, collects evidence from multiple static source adapters in parallel, then runs the same extraction pipeline. See [docs/EVIDENCE_GATHERING.md](docs/EVIDENCE_GATHERING.md).
 
-A **web demo** (FastAPI + server-rendered HTML) exposes the same gather flow via a browser form and optional JSON API. See [docs/WEB_DEMO.md](docs/WEB_DEMO.md) for local run, Docker, and Cloud Run deployment. API keys stay server-side; default dry-run mode needs no keys.
+A **web demo** (FastAPI + server-rendered HTML) exposes the same gather flow via a browser form and optional JSON API. See [docs/WEB_DEMO.md](docs/WEB_DEMO.md) for local run and Docker. For Cloud Run deployment, see [docs/CLOUD_RUN_DEPLOYMENT.md](docs/CLOUD_RUN_DEPLOYMENT.md). API keys stay server-side; default dry-run mode needs no keys.
 
 The sample dataset (`data/restaurants.csv`) includes optional `expected_label` values for offline evaluation. Metrics are illustrative on ~12 rows, not statistically meaningful.
 
@@ -280,4 +280,6 @@ Unit tests cover preprocessing, validation, evaluation, agents, pipeline orchest
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — system design
 - [docs/LANGGRAPH_ORCHESTRATION.md](docs/LANGGRAPH_ORCHESTRATION.md) — LangGraph backend design
 - [docs/EVIDENCE_GATHERING.md](docs/EVIDENCE_GATHERING.md) — parallel evidence gathering
+- [docs/WEB_DEMO.md](docs/WEB_DEMO.md) — web demo local run and API
+- [docs/CLOUD_RUN_DEPLOYMENT.md](docs/CLOUD_RUN_DEPLOYMENT.md) — Cloud Run deploy, secrets, smoke tests
 - [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) — detailed build specification
