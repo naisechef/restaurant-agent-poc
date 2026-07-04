@@ -1,0 +1,13 @@
+id,name,evidence_text,expected_label
+r001,Harbor View Cafe,"Enjoy breakfast on our sunny patio overlooking the marina. Outdoor heaters keep the deck comfortable year-round.",yes
+r002,Rooftop Gardens,"Dinner service nightly on the rooftop terrace with garden views. Reservations recommended for terrace tables.",yes
+r003,Downtown Diner,"Cozy indoor booths only. All seating is inside the dining room; we do not offer patio or sidewalk tables.",no
+r004,Underground Kitchen,"Located in the basement level with no windows or exterior access. Dining is strictly indoors.",no
+r005,Lakeside Grill,"Outdoor seating available weather permitting. During winter all guests are seated inside.",unknown
+r006,Market Street Eatery,"We do not have outdoor dining. Our sidewalk patio opens on warm evenings.",unknown
+r007,Corner Bistro,"Italian cuisine. Open Tuesday through Sunday.",unknown
+r008,Quick Bites,"Fast casual. Order at the counter.",unknown
+r009,Sunset Lounge,"Craft cocktails and small plates. Live music on Fridays.",unknown
+r010,The Noodle House,"Delivery and takeout available. Dine-in seating in our main dining hall.",unknown
+r011,Garden Terrace Restaurant,"Named for our covered terrace — al fresco lunch served daily on the garden terrace.",yes
+r012,Skyline Steakhouse,"Prime cuts and an extensive wine list. Valet parking available.",
