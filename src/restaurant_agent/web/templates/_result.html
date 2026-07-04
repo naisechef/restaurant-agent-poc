@@ -39,6 +39,35 @@
     </div>
   </div>
 
+  {% if result.structured_validations %}
+  <div class="card structured-validation">
+    <h3>Decision Verification</h3>
+    {% for validation in result.structured_validations %}
+    <dl class="details-grid{% if not loop.first %} validation-entry{% endif %}">
+      <dt>LLM prediction</dt>
+      <dd class="prediction prediction-{{ validation.prediction or 'unknown' }}">
+        {{ validation.prediction or "unknown" }}
+      </dd>
+
+      <dt>{{ validation.source | replace("_", " ") | title }} outdoor seating</dt>
+      <dd>
+        {% if validation.source_value is not none %}
+        {{ "true" if validation.source_value else "false" }}
+        {% else %}unavailable{% endif %}
+      </dd>
+
+      <dt>Verification status</dt>
+      <dd class="validation-status validation-{{ validation.status }}">
+        {{ validation.status | replace("_", " ") }}
+      </dd>
+
+      <dt>Explanation</dt>
+      <dd>{{ validation.explanation }}</dd>
+    </dl>
+    {% endfor %}
+  </div>
+  {% endif %}
+
   <div class="card execution-details">
     <h3>Execution details</h3>
     <dl class="details-grid">
@@ -96,6 +125,21 @@
       <dt>Source</dt>
       <dd>{{ result.google_places.source_name }}</dd>
 
+      {% if result.google_places.place_name %}
+      <dt>Place name</dt>
+      <dd>{{ result.google_places.place_name }}</dd>
+      {% endif %}
+
+      {% if result.google_places.rating is not none %}
+      <dt>Rating</dt>
+      <dd>
+        {{ result.google_places.rating }}
+        {% if result.google_places.user_rating_count is not none %}
+        ({{ result.google_places.user_rating_count }} review(s))
+        {% endif %}
+      </dd>
+      {% endif %}
+
       <dt>Maps evidence</dt>
       <dd>{{ result.google_places.maps_evidence_count }}</dd>
 
@@ -110,13 +154,18 @@
       </dd>
 
       {% if result.google_places.maps_url %}
-      <dt>Maps URL</dt>
+      <dt>Google Maps</dt>
       <dd class="cell-url">
         <a href="{{ result.google_places.maps_url }}"
            rel="noopener noreferrer" title="{{ result.google_places.maps_url }}">
-          {{ result.google_places.maps_url }}
+          Open in Google Maps
         </a>
       </dd>
+      {% endif %}
+
+      {% if result.google_places.place_id %}
+      <dt>Place ID</dt>
+      <dd>{{ result.google_places.place_id }}</dd>
       {% endif %}
     </dl>
     {% endif %}

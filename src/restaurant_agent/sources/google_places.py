@@ -24,6 +24,7 @@ from restaurant_agent.schemas import (
     EvidenceSourceType,
     PlaceLocation,
     RestaurantQuery,
+    StructuredSourceAttributes,
 )
 
 logger = logging.getLogger(__name__)
@@ -112,6 +113,32 @@ def _extract_place_location(details: dict[str, object]) -> PlaceLocation | None:
         google_maps_url=google_maps_url,
         latitude=latitude,
         longitude=longitude,
+    )
+
+
+def _extract_structured_attributes(
+    details: dict[str, object], place_id: str
+) -> StructuredSourceAttributes:
+    """Build sanitized structured attributes from a Place Details response."""
+    outdoor_seating = details.get("outdoorSeating")
+    if not isinstance(outdoor_seating, bool):
+        outdoor_seating = None
+
+    rating = details.get("rating")
+    rating = float(rating) if isinstance(rating, (int, float)) else None
+
+    user_rating_count = details.get("userRatingCount")
+    user_rating_count = (
+        user_rating_count if isinstance(user_rating_count, int) else None
+    )
+
+    return StructuredSourceAttributes(
+        source="google_places",
+        outdoor_seating=outdoor_seating,
+        rating=rating,
+        user_rating_count=user_rating_count,
+        place_id=place_id,
+        place_name=_extract_localized_text(details.get("displayName")),
     )
 
 
@@ -205,9 +232,11 @@ class GooglePlacesAdapter:
         self._max_review_chars = max_review_chars
         self._transport = transport or HttpxPlacesTransport(api_key)
         self._place_location: PlaceLocation | None = None
+        self._structured_attributes: StructuredSourceAttributes | None = None
 
     def gather(self, query: RestaurantQuery) -> list[Evidence]:
         self._place_location = None
+        self._structured_attributes = None
         text_query = f"{query.name}, {query.city}"
 
         start = time.perf_counter()
@@ -234,6 +263,7 @@ class GooglePlacesAdapter:
 
         details = self._transport.get_place_details(place_id, timeout=self._timeout)
         self._place_location = _extract_place_location(details)
+        self._structured_attributes = _extract_structured_attributes(details, place_id)
 
         maps_url = details.get("googleMapsUri")
         website_url = details.get("websiteUri")

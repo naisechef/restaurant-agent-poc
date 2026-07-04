@@ -16,10 +16,12 @@ def run_adapter_safe(adapter: SourceAdapter, query: RestaurantQuery) -> SourceRe
     try:
         evidence = adapter.gather(query)
         place_location = getattr(adapter, "_place_location", None)
+        structured_attributes = getattr(adapter, "_structured_attributes", None)
         return SourceResult(
             source_name=adapter.name,
             evidence=evidence,
             place_location=place_location,
+            structured_attributes=structured_attributes,
         )
     except Exception as exc:
         logger.warning("Source adapter %s failed: %s", adapter.name, exc)

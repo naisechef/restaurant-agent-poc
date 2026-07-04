@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -17,6 +18,20 @@ from tests.test_google_places_adapter import FakeTransport, _FULL_DETAILS
 FIXTURES_PATH = Path(__file__).resolve().parents[1] / "data" / "evidence_fixtures"
 QUERY_NAME = "The River Cafe"
 QUERY_CITY = "London"
+
+
+class _YesDryRunClient:
+    """Deterministic dry-run client that always extracts yes for verification tests."""
+
+    def complete(self, system_prompt: str, user_prompt: str) -> str:
+        return json.dumps(
+            {
+                "label": "yes",
+                "confidence": 0.95,
+                "evidence": ["Google Places lists outdoor seating as available."],
+                "reasoning": "Test fixture: outdoor seating confirmed from evidence.",
+            }
+        )
 
 
 def _google_places_build_adapters(
@@ -348,6 +363,10 @@ def test_demo_location_panel_with_mocked_live_google(
         "restaurant_agent.web.service.build_adapters",
         _google_places_build_adapters,
     )
+    monkeypatch.setattr(
+        "restaurant_agent.web.service.DryRunClaudeClient",
+        _YesDryRunClient,
+    )
 
     response = client.post(
         "/demo",
@@ -369,8 +388,12 @@ def test_demo_location_panel_with_mocked_live_google(
     assert 'class="map-preview"' in text
     assert "openstreetmap.org/export/embed.html" in text
     assert "No live location data available." not in text
+    assert "Decision Verification" in text
+    assert "validation-verified" in text
+    assert "Google Places outdoor seating" in text
+    assert "Verification status" in text
     assert "displayName" not in text
-    assert "ChIJ123" not in text
+    assert "outdoorSeating" not in text
     assert "test-key" not in text
 
 
@@ -381,6 +404,10 @@ def test_api_gather_with_mocked_live_google_includes_location(
     monkeypatch.setattr(
         "restaurant_agent.web.service.build_adapters",
         _google_places_build_adapters,
+    )
+    monkeypatch.setattr(
+        "restaurant_agent.web.service.DryRunClaudeClient",
+        _YesDryRunClient,
     )
 
     response = client.post(
@@ -401,9 +428,18 @@ def test_api_gather_with_mocked_live_google_includes_location(
     assert result.google_places.formatted_address == "Thames Wharf, Rainville Rd, London"
     assert result.google_places.latitude == pytest.approx(51.4839)
     assert result.google_places.longitude == pytest.approx(-0.2234)
+    assert result.google_places.rating == pytest.approx(4.6)
+    assert result.google_places.user_rating_count == 812
+    assert len(result.structured_validations) == 1
+    assert result.structured_validations[0].source == "google_places"
+    assert result.structured_validations[0].status == "verified"
+    assert result.structured_validations[0].source_value is True
+    assert result.structured_validations[0].prediction == "yes"
+    assert result.route == "success"
 
     text = response.text.lower()
     assert "displayname" not in text
-    assert "chij123" not in text
+    assert "outdoorseating" not in text
     assert "test-key" not in text
     assert "x-goog-api-key" not in text
+    assert result.google_places.place_id == "ChIJ123"

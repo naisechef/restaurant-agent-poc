@@ -79,6 +79,34 @@ class PlaceLocation(BaseModel):
     longitude: float | None = None
 
 
+class StructuredSourceAttributes(BaseModel):
+    """Sanitized structured attributes from one evidence provider (no raw API payload)."""
+
+    source: str
+    outdoor_seating: bool | None = None
+    rating: float | None = None
+    user_rating_count: int | None = None
+    place_id: str | None = None
+    place_name: str | None = None
+
+
+StructuredValidationStatus = Literal[
+    "verified", "conflict", "unavailable", "structured_only"
+]
+
+
+class StructuredValidation(BaseModel):
+    """Comparison of an LLM prediction against structured provider data."""
+
+    source: str
+    attribute: str
+    source_value: bool | None = None
+    prediction: OutdoorSeatingLabel | None = None
+    status: StructuredValidationStatus
+    needs_review: bool
+    explanation: str
+
+
 class SourceResult(BaseModel):
     """Result from one source adapter invocation."""
 
@@ -86,6 +114,7 @@ class SourceResult(BaseModel):
     evidence: list[Evidence] = Field(default_factory=list)
     error: str | None = None
     place_location: PlaceLocation | None = None
+    structured_attributes: StructuredSourceAttributes | None = None
 
 
 class GatheredEvidence(BaseModel):
@@ -131,6 +160,9 @@ class GooglePlacesSummary(BaseModel):
     google_maps_url: str | None = None
     latitude: float | None = None
     longitude: float | None = None
+    rating: float | None = None
+    user_rating_count: int | None = None
+    place_id: str | None = None
 
 
 class GatherRunResult(BaseModel):
@@ -155,4 +187,5 @@ class GatherRunResult(BaseModel):
     error: str | None
     reliability_mix: dict[str, int] = Field(default_factory=dict)
     google_places: GooglePlacesSummary | None = None
+    structured_validations: list[StructuredValidation] = Field(default_factory=list)
     graph_trace: list[GraphNodeExecution] | None = None

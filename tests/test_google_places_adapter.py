@@ -107,6 +107,13 @@ def test_successful_place_lookup_returns_evidence() -> None:
         latitude=51.4839,
         longitude=-0.2234,
     )
+    assert adapter._structured_attributes is not None
+    assert adapter._structured_attributes.source == "google_places"
+    assert adapter._structured_attributes.outdoor_seating is True
+    assert adapter._structured_attributes.rating == 4.6
+    assert adapter._structured_attributes.user_rating_count == 812
+    assert adapter._structured_attributes.place_id == "ChIJ123"
+    assert adapter._structured_attributes.place_name == "The River Cafe"
 
 
 def test_no_candidates_found_returns_empty() -> None:
@@ -134,6 +141,8 @@ def test_outdoor_seating_true_produces_high_reliability_evidence() -> None:
     assert evidence[0].reliability == "high"
     assert "available" in evidence[0].snippet.lower()
     assert "not" not in evidence[0].snippet.lower()
+    assert adapter._structured_attributes is not None
+    assert adapter._structured_attributes.outdoor_seating is True
 
 
 def test_outdoor_seating_false_produces_high_reliability_evidence() -> None:
@@ -148,6 +157,8 @@ def test_outdoor_seating_false_produces_high_reliability_evidence() -> None:
     assert len(evidence) == 1
     assert evidence[0].reliability == "high"
     assert "does not list" in evidence[0].snippet.lower()
+    assert adapter._structured_attributes is not None
+    assert adapter._structured_attributes.outdoor_seating is False
 
 
 def test_outdoor_seating_absent_produces_no_evidence() -> None:
@@ -160,6 +171,8 @@ def test_outdoor_seating_absent_produces_no_evidence() -> None:
     evidence = adapter.gather(QUERY)
 
     assert evidence == []
+    assert adapter._structured_attributes is not None
+    assert adapter._structured_attributes.outdoor_seating is None
 
 
 def test_reviews_mapped_into_low_reliability_evidence_with_limit() -> None:

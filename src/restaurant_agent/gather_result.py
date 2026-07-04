@@ -10,8 +10,13 @@ from restaurant_agent.schemas import (
     GooglePlacesSummary,
     GraphNodeExecution,
     SourceAdapterExecution,
+    StructuredSourceAttributes,
 )
 from restaurant_agent.state import GatherState
+from restaurant_agent.structured_validation import (
+    build_structured_validations,
+    escalation_needs_review,
+)
 
 
 def _resolve_route(state: GatherState) -> GatherRoute:
@@ -31,6 +36,16 @@ def _reliability_mix(evidence: list) -> dict[str, int]:
     return counts
 
 
+def _find_structured_attribute_sources(
+    state: GatherState,
+) -> list[StructuredSourceAttributes]:
+    sources: list[StructuredSourceAttributes] = []
+    for result in state.source_results:
+        if result.structured_attributes is not None:
+            sources.append(result.structured_attributes)
+    return sources
+
+
 def _build_google_places_summary(state: GatherState) -> GooglePlacesSummary | None:
     google_items = [
         item for item in state.gathered_evidence if item.source_name == "google_places"
@@ -40,8 +55,9 @@ def _build_google_places_summary(state: GatherState) -> GooglePlacesSummary | No
         None,
     )
     place_location = google_source.place_location if google_source else None
+    attributes = google_source.structured_attributes if google_source else None
 
-    if not google_items and place_location is None:
+    if not google_items and place_location is None and attributes is None:
         return None
 
     maps_count = sum(
@@ -64,11 +80,18 @@ def _build_google_places_summary(state: GatherState) -> GooglePlacesSummary | No
         reliability_medium=mix["medium"],
         reliability_low=mix["low"],
         maps_url=maps_url,
-        place_name=place_location.place_name if place_location else None,
+        place_name=(
+            place_location.place_name
+            if place_location and place_location.place_name
+            else (attributes.place_name if attributes else None)
+        ),
         formatted_address=place_location.formatted_address if place_location else None,
         google_maps_url=maps_url,
         latitude=place_location.latitude if place_location else None,
         longitude=place_location.longitude if place_location else None,
+        rating=attributes.rating if attributes else None,
+        user_rating_count=attributes.user_rating_count if attributes else None,
+        place_id=attributes.place_id if attributes else None,
     )
 
 
@@ -163,6 +186,17 @@ def build_gather_run_result(
 
     trace = enrich_graph_trace(graph_trace) if graph_trace else None
 
+    attribute_sources = _find_structured_attribute_sources(state)
+    structured_validations = build_structured_validations(
+        state.prediction, attribute_sources
+    )
+
+    route = _resolve_route(state)
+    needs_review = state.needs_review
+    if route == "success" and escalation_needs_review(structured_validations):
+        route = "needs_review"
+        needs_review = True
+
     return GatherRunResult(
         restaurant_id=state.restaurant_id,
         name=name,
@@ -178,10 +212,11 @@ def build_gather_run_result(
         source_results=source_results,
         gather_errors=list(state.gather_errors),
         validation_status=state.validation_status,
-        needs_review=state.needs_review,
-        route=_resolve_route(state),
+        needs_review=needs_review,
+        route=route,
         error=state.error,
         reliability_mix=_reliability_mix(state.gathered_evidence),
         google_places=_build_google_places_summary(state),
+        structured_validations=structured_validations,
         graph_trace=trace,
     )
