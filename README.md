@@ -20,6 +20,8 @@ For each row in an input CSV, the pipeline:
 
 Alternatively, the **`gather`** command accepts a restaurant name and city, collects evidence from multiple static source adapters in parallel, then runs the same extraction pipeline. See [docs/EVIDENCE_GATHERING.md](docs/EVIDENCE_GATHERING.md).
 
+A **web demo** (FastAPI + server-rendered HTML) exposes the same gather flow via a browser form and optional JSON API. See [docs/WEB_DEMO.md](docs/WEB_DEMO.md) for local run, Docker, and Cloud Run deployment. API keys stay server-side; default dry-run mode needs no keys.
+
 The sample dataset (`data/restaurants.csv`) includes optional `expected_label` values for offline evaluation. Metrics are illustrative on ~12 rows, not statistically meaningful.
 
 ## Architecture
@@ -43,6 +45,8 @@ source .venv/bin/activate   # Windows: .venv\Scripts\activate
 pip install -e ".[dev]"
 cp .env.example .env        # add ANTHROPIC_API_KEY for live Claude runs
 ```
+
+For the web demo: `pip install -e ".[web,dev]"` then `uvicorn restaurant_agent.web.app:app --reload`.
 
 ## Environment variables
 

@@ -69,12 +69,52 @@ class Evidence(BaseModel):
     reliability: EvidenceReliability = "medium"
 
 
+class PlaceLocation(BaseModel):
+    """Sanitized place metadata for web display (no raw API payloads)."""
+
+    place_name: str | None = None
+    formatted_address: str | None = None
+    google_maps_url: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+
+
+class StructuredSourceAttributes(BaseModel):
+    """Sanitized structured attributes from one evidence provider (no raw API payload)."""
+
+    source: str
+    outdoor_seating: bool | None = None
+    rating: float | None = None
+    user_rating_count: int | None = None
+    place_id: str | None = None
+    place_name: str | None = None
+
+
+StructuredValidationStatus = Literal[
+    "verified", "conflict", "unavailable", "structured_only"
+]
+
+
+class StructuredValidation(BaseModel):
+    """Comparison of an LLM prediction against structured provider data."""
+
+    source: str
+    attribute: str
+    source_value: bool | None = None
+    prediction: OutdoorSeatingLabel | None = None
+    status: StructuredValidationStatus
+    needs_review: bool
+    explanation: str
+
+
 class SourceResult(BaseModel):
     """Result from one source adapter invocation."""
 
     source_name: str
     evidence: list[Evidence] = Field(default_factory=list)
     error: str | None = None
+    place_location: PlaceLocation | None = None
+    structured_attributes: StructuredSourceAttributes | None = None
 
 
 class GatheredEvidence(BaseModel):
@@ -82,3 +122,86 @@ class GatheredEvidence(BaseModel):
 
     items: list[Evidence] = Field(default_factory=list)
     errors: list[str] = Field(default_factory=list)
+
+
+ValidationStatus = Literal["ok", "flagged", "failed"]
+GatherRoute = Literal["success", "needs_review", "failed"]
+GatherBackend = Literal["pipeline", "graph"]
+
+
+class SourceAdapterExecution(BaseModel):
+    """One adapter's execution outcome for web/API responses."""
+
+    source_name: str
+    evidence_count: int
+    error: str | None = None
+
+
+class GraphNodeExecution(BaseModel):
+    """One LangGraph node's partial state update, in execution order."""
+
+    node: str
+    update: dict[str, object] = Field(default_factory=dict)
+    summary: str = ""
+    duration_ms: float | None = None
+    status: str | None = None
+    evidence_count: int | None = None
+    update_type: str | None = None
+
+
+class ValidationSummary(BaseModel):
+    """Aggregated validation outcome for graph execution observability."""
+
+    pipeline_status: ValidationStatus | None = None
+    route: GatherRoute
+    structured_status: StructuredValidationStatus | None = None
+    route_escalated: bool = False
+
+
+class GooglePlacesSummary(BaseModel):
+    """Aggregated Google Places evidence for observability (no API secrets)."""
+
+    source_name: str = "google_places"
+    maps_evidence_count: int = 0
+    review_evidence_count: int = 0
+    reliability_high: int = 0
+    reliability_medium: int = 0
+    reliability_low: int = 0
+    maps_url: str | None = None
+    place_name: str | None = None
+    formatted_address: str | None = None
+    google_maps_url: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    rating: float | None = None
+    user_rating_count: int | None = None
+    place_id: str | None = None
+
+
+class GatherRunResult(BaseModel):
+    """Structured gather outcome returned by the web layer (in-memory, no CSV)."""
+
+    restaurant_id: str
+    name: str
+    city: str
+    backend: GatherBackend
+    dry_run: bool = False
+    live_google: bool = False
+    prediction: OutdoorSeatingLabel | None
+    confidence: float | None
+    reasoning: str | None
+    evidence: list[str]
+    gathered_evidence: list[Evidence]
+    source_results: list[SourceAdapterExecution]
+    gather_errors: list[str]
+    validation_status: ValidationStatus | None
+    needs_review: bool
+    route: GatherRoute
+    error: str | None
+    reliability_mix: dict[str, int] = Field(default_factory=dict)
+    google_places: GooglePlacesSummary | None = None
+    structured_validations: list[StructuredValidation] = Field(default_factory=list)
+    validation_summary: ValidationSummary | None = None
+    decision_path: list[str] = Field(default_factory=list)
+    total_duration_ms: float | None = None
+    graph_trace: list[GraphNodeExecution] | None = None

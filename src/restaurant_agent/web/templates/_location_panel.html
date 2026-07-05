@@ -1,0 +1,47 @@
+<aside class="location-panel card" aria-labelledby="location-heading">
+  <h2 id="location-heading">Location</h2>
+
+  {% if not result %}
+  <p class="muted">Location will appear after search.</p>
+
+  {% elif result.google_places and (
+      result.google_places.place_name
+      or result.google_places.formatted_address
+      or result.google_places.google_maps_url
+  ) %}
+  {% if result.google_places.place_name %}
+  <p class="place-name">{{ result.google_places.place_name }}</p>
+  {% endif %}
+
+  {% if result.google_places.formatted_address %}
+  <p class="place-address">{{ result.google_places.formatted_address }}</p>
+  {% endif %}
+
+  {% if result.google_places.google_maps_url %}
+  <p class="place-maps-link">
+    <a href="{{ result.google_places.google_maps_url }}"
+       rel="noopener noreferrer"
+       target="_blank">
+      Open in Google Maps
+    </a>
+  </p>
+  {% endif %}
+
+  {% if result.google_places.latitude is not none and result.google_places.longitude is not none %}
+  {% set lat = result.google_places.latitude %}
+  {% set lng = result.google_places.longitude %}
+  {% set pad = 0.008 %}
+  <div class="map-preview">
+    <iframe
+      title="Map preview for {{ result.google_places.place_name or result.name }}"
+      loading="lazy"
+      referrerpolicy="no-referrer-when-downgrade"
+      src="https://www.openstreetmap.org/export/embed.html?bbox={{ lng - pad }},{{ lat - pad }},{{ lng + pad }},{{ lat + pad }}&amp;layer=mapnik&amp;marker={{ lat }},{{ lng }}">
+    </iframe>
+  </div>
+  {% endif %}
+
+  {% else %}
+  <p class="muted">No live location data available.</p>
+  {% endif %}
+</aside>

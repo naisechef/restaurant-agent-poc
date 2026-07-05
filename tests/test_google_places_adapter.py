@@ -14,7 +14,7 @@ import httpx
 import pytest
 
 from restaurant_agent.config import MissingGooglePlacesAPIKeyError, Settings
-from restaurant_agent.schemas import EvidenceSourceType, RestaurantQuery
+from restaurant_agent.schemas import EvidenceSourceType, PlaceLocation, RestaurantQuery
 from restaurant_agent.sources.google_places import (
     GooglePlacesAdapter,
     GooglePlacesError,
@@ -55,6 +55,7 @@ _FULL_DETAILS = {
     "id": "ChIJ123",
     "displayName": {"text": "The River Cafe", "languageCode": "en"},
     "formattedAddress": "Thames Wharf, Rainville Rd, London",
+    "location": {"latitude": 51.4839, "longitude": -0.2234},
     "googleMapsUri": "https://maps.google.com/?cid=123",
     "websiteUri": "https://rivercafe.co.uk",
     "outdoorSeating": True,
@@ -99,6 +100,20 @@ def test_successful_place_lookup_returns_evidence() -> None:
     assert outdoor_item.reliability == "high"
     assert outdoor_item.url == "https://maps.google.com/?cid=123"
     assert outdoor_item.source_name == "google_places"
+    assert adapter._place_location == PlaceLocation(
+        place_name="The River Cafe",
+        formatted_address="Thames Wharf, Rainville Rd, London",
+        google_maps_url="https://maps.google.com/?cid=123",
+        latitude=51.4839,
+        longitude=-0.2234,
+    )
+    assert adapter._structured_attributes is not None
+    assert adapter._structured_attributes.source == "google_places"
+    assert adapter._structured_attributes.outdoor_seating is True
+    assert adapter._structured_attributes.rating == 4.6
+    assert adapter._structured_attributes.user_rating_count == 812
+    assert adapter._structured_attributes.place_id == "ChIJ123"
+    assert adapter._structured_attributes.place_name == "The River Cafe"
 
 
 def test_no_candidates_found_returns_empty() -> None:
@@ -126,6 +141,8 @@ def test_outdoor_seating_true_produces_high_reliability_evidence() -> None:
     assert evidence[0].reliability == "high"
     assert "available" in evidence[0].snippet.lower()
     assert "not" not in evidence[0].snippet.lower()
+    assert adapter._structured_attributes is not None
+    assert adapter._structured_attributes.outdoor_seating is True
 
 
 def test_outdoor_seating_false_produces_high_reliability_evidence() -> None:
@@ -140,6 +157,8 @@ def test_outdoor_seating_false_produces_high_reliability_evidence() -> None:
     assert len(evidence) == 1
     assert evidence[0].reliability == "high"
     assert "does not list" in evidence[0].snippet.lower()
+    assert adapter._structured_attributes is not None
+    assert adapter._structured_attributes.outdoor_seating is False
 
 
 def test_outdoor_seating_absent_produces_no_evidence() -> None:
@@ -152,6 +171,8 @@ def test_outdoor_seating_absent_produces_no_evidence() -> None:
     evidence = adapter.gather(QUERY)
 
     assert evidence == []
+    assert adapter._structured_attributes is not None
+    assert adapter._structured_attributes.outdoor_seating is None
 
 
 def test_reviews_mapped_into_low_reliability_evidence_with_limit() -> None:
@@ -189,6 +210,30 @@ def test_review_summary_and_editorial_summary_produce_medium_reliability_evidenc
     assert all(item.source_type == EvidenceSourceType.MAPS for item in evidence)
     editorial_item = next(item for item in evidence if "Italian" in item.snippet)
     assert editorial_item.url == "https://example.com"
+
+
+def test_place_location_captured_even_without_evidence() -> None:
+    transport = FakeTransport(
+        search_response={"places": [{"id": "p1"}]},
+        details_response={
+            "displayName": {"text": "Quiet Place"},
+            "formattedAddress": "1 Side St, London",
+            "googleMapsUri": "https://maps.google.com/?cid=999",
+            "location": {"latitude": 51.48, "longitude": -0.22},
+        },
+    )
+    adapter = _make_adapter(transport)
+
+    evidence = adapter.gather(QUERY)
+
+    assert evidence == []
+    assert adapter._place_location == PlaceLocation(
+        place_name="Quiet Place",
+        formatted_address="1 Side St, London",
+        google_maps_url="https://maps.google.com/?cid=999",
+        latitude=51.48,
+        longitude=-0.22,
+    )
 
 
 def test_api_error_raises_google_places_error() -> None:

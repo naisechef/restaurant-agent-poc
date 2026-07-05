@@ -17,6 +17,12 @@ dependencies = [
 dev = [
     "pytest>=8.0",
 ]
+web = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.32",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.12",
+]
 
 [project.scripts]
 restaurant-agent = "restaurant_agent.cli:main"
@@ -31,5 +37,11 @@ package-dir = {"" = "src"}
 [tool.setuptools.packages.find]
 where = ["src"]
 
+[tool.setuptools.package-data]
+restaurant_agent = ["web/templates/*.html", "web/static/*"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+markers = [
+    "no_claude_mock: skip autouse ClaudeClient mock for API key error tests",
+]

@@ -19,7 +19,13 @@ from typing import Protocol
 
 import httpx
 
-from restaurant_agent.schemas import Evidence, EvidenceSourceType, RestaurantQuery
+from restaurant_agent.schemas import (
+    Evidence,
+    EvidenceSourceType,
+    PlaceLocation,
+    RestaurantQuery,
+    StructuredSourceAttributes,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -29,7 +35,7 @@ _PLACE_DETAILS_URL_TEMPLATE = "https://places.googleapis.com/v1/places/{place_id
 # Explicit field lists only — never "*" — to bound response size and cost.
 _SEARCH_FIELD_MASK = "places.id,places.displayName,places.formattedAddress"
 _DETAILS_FIELD_MASK = (
-    "id,displayName,formattedAddress,googleMapsUri,websiteUri,"
+    "id,displayName,formattedAddress,location,googleMapsUri,websiteUri,"
     "outdoorSeating,rating,userRatingCount,reviews,reviewSummary,editorialSummary"
 )
 
@@ -67,6 +73,73 @@ def _extract_localized_text(value: object) -> str | None:
 
 def _checkmark(flag: bool) -> str:
     return "\u2713" if flag else "\u2717"
+
+
+def _extract_place_location(details: dict[str, object]) -> PlaceLocation | None:
+    """Build sanitized place metadata from a Place Details response."""
+    place_name = _extract_localized_text(details.get("displayName"))
+
+    formatted_address = details.get("formattedAddress")
+    if not isinstance(formatted_address, str):
+        formatted_address = None
+    else:
+        formatted_address = formatted_address.strip() or None
+
+    google_maps_url = details.get("googleMapsUri")
+    if not isinstance(google_maps_url, str):
+        google_maps_url = None
+    else:
+        google_maps_url = google_maps_url.strip() or None
+
+    latitude: float | None = None
+    longitude: float | None = None
+    location = details.get("location")
+    if isinstance(location, dict):
+        lat = location.get("latitude")
+        lng = location.get("longitude")
+        if isinstance(lat, (int, float)):
+            latitude = float(lat)
+        if isinstance(lng, (int, float)):
+            longitude = float(lng)
+
+    if not any(
+        (place_name, formatted_address, google_maps_url, latitude, longitude)
+    ):
+        return None
+
+    return PlaceLocation(
+        place_name=place_name,
+        formatted_address=formatted_address,
+        google_maps_url=google_maps_url,
+        latitude=latitude,
+        longitude=longitude,
+    )
+
+
+def _extract_structured_attributes(
+    details: dict[str, object], place_id: str
+) -> StructuredSourceAttributes:
+    """Build sanitized structured attributes from a Place Details response."""
+    outdoor_seating = details.get("outdoorSeating")
+    if not isinstance(outdoor_seating, bool):
+        outdoor_seating = None
+
+    rating = details.get("rating")
+    rating = float(rating) if isinstance(rating, (int, float)) else None
+
+    user_rating_count = details.get("userRatingCount")
+    user_rating_count = (
+        user_rating_count if isinstance(user_rating_count, int) else None
+    )
+
+    return StructuredSourceAttributes(
+        source="google_places",
+        outdoor_seating=outdoor_seating,
+        rating=rating,
+        user_rating_count=user_rating_count,
+        place_id=place_id,
+        place_name=_extract_localized_text(details.get("displayName")),
+    )
 
 
 class PlacesTransport(Protocol):
@@ -158,8 +231,12 @@ class GooglePlacesAdapter:
         self._max_reviews = max_reviews
         self._max_review_chars = max_review_chars
         self._transport = transport or HttpxPlacesTransport(api_key)
+        self._place_location: PlaceLocation | None = None
+        self._structured_attributes: StructuredSourceAttributes | None = None
 
     def gather(self, query: RestaurantQuery) -> list[Evidence]:
+        self._place_location = None
+        self._structured_attributes = None
         text_query = f"{query.name}, {query.city}"
 
         start = time.perf_counter()
@@ -185,6 +262,8 @@ class GooglePlacesAdapter:
             return []
 
         details = self._transport.get_place_details(place_id, timeout=self._timeout)
+        self._place_location = _extract_place_location(details)
+        self._structured_attributes = _extract_structured_attributes(details, place_id)
 
         maps_url = details.get("googleMapsUri")
         website_url = details.get("websiteUri")

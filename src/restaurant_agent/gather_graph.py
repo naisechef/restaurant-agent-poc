@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from pathlib import Path
 from typing import Literal
 
@@ -23,8 +24,9 @@ from restaurant_agent.gather_pipeline import (
     _initial_gather_state,
     _resolve_restaurant_id,
 )
+from restaurant_agent.gather_result import build_gather_run_result
 from restaurant_agent.pipeline import LLMClient, _write_csv
-from restaurant_agent.schemas import RestaurantQuery
+from restaurant_agent.schemas import GatherRunResult, GraphNodeExecution, RestaurantQuery
 from restaurant_agent.sources.base import SourceAdapter
 from restaurant_agent.state import GatherState
 
@@ -190,6 +192,107 @@ def _final_state(result: GatherState | dict[str, object]) -> GatherState:
     if isinstance(result, GatherState):
         return result
     return GatherState.model_validate(result)
+
+
+def _normalize_graph_update(update: dict[str, object] | None) -> dict[str, object]:
+    """LangGraph may emit ``None`` for terminal nodes (e.g. success) — treat as empty."""
+    return update if update is not None else {}
+
+
+def _apply_graph_update(
+    state: GatherState, update: dict[str, object] | None
+) -> GatherState:
+    """Apply a LangGraph node update, mirroring the source_results reducer."""
+    update = _normalize_graph_update(update)
+    if "source_results" in update:
+        incoming = update["source_results"]
+        if isinstance(incoming, list):
+            update = {
+                **update,
+                "source_results": [*state.source_results, *incoming],
+            }
+    return state.model_copy(update=update)
+
+
+def _serialize_graph_update(update: dict[str, object] | None) -> dict[str, object]:
+    """Convert node updates to JSON-serializable dicts for graph_trace."""
+    update = _normalize_graph_update(update)
+    serialized: dict[str, object] = {}
+    for key, value in update.items():
+        if key in {"raw_text", "cleaned_text"}:
+            continue
+        if key == "source_results" and isinstance(value, list):
+            serialized[key] = [
+                item.model_dump() if hasattr(item, "model_dump") else item
+                for item in value
+            ]
+        elif key == "gathered_evidence" and isinstance(value, list):
+            serialized[key] = [
+                item.model_dump() if hasattr(item, "model_dump") else item
+                for item in value
+            ]
+        elif hasattr(value, "model_dump"):
+            serialized[key] = value.model_dump()
+        else:
+            serialized[key] = value
+    return serialized
+
+
+def run_gather_graph(
+    query: RestaurantQuery,
+    adapters: dict[str, SourceAdapter],
+    client: LLMClient,
+    threshold: float,
+    *,
+    dry_run: bool = False,
+    live_google: bool = False,
+) -> GatherRunResult:
+    """Gather via LangGraph without writing CSV files; includes execution trace."""
+    pipeline = EvidenceGatherPipeline(client, threshold, adapters)
+    graph = pipeline.build()
+    state = _initial_gather_state(query)
+    trace: list[GraphNodeExecution] = []
+    run_start = time.perf_counter()
+    prev_time = run_start
+
+    try:
+        for step in graph.stream(state, stream_mode="updates"):
+            for node, raw_update in step.items():
+                node_start = prev_time
+                normalized = _normalize_graph_update(raw_update)
+                state = _apply_graph_update(state, normalized)
+                node_end = time.perf_counter()
+                duration_ms = round((node_end - node_start) * 1000, 2)
+                prev_time = node_end
+                trace.append(
+                    GraphNodeExecution(
+                        node=node,
+                        update=_serialize_graph_update(normalized),
+                        duration_ms=duration_ms,
+                    )
+                )
+    except Exception as exc:
+        logger.error(
+            "Unexpected error in gather graph for %s: %s",
+            query.name,
+            exc,
+            exc_info=True,
+        )
+        state = state.model_copy(
+            update={
+                "error": str(exc),
+                "validation_status": "failed",
+                "needs_review": True,
+            }
+        )
+
+    return build_gather_run_result(
+        state,
+        backend="graph",
+        graph_trace=trace,
+        dry_run=dry_run,
+        live_google=live_google,
+    )
 
 
 def run_gather_graph_pipeline(
