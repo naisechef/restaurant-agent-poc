@@ -11,10 +11,8 @@ import pandas as pd
 from restaurant_agent.claude_client import ClaudeClient, DryRunClaudeClient
 from restaurant_agent.config import Settings, load_settings
 from restaurant_agent.gather_graph import run_gather_graph_pipeline
-from restaurant_agent.gather_pipeline import run_gather_pipeline
 from restaurant_agent.graph_pipeline import run_graph_pipeline
 from restaurant_agent.logging_config import configure_logging
-from restaurant_agent.pipeline import run_pipeline
 from restaurant_agent.schemas import EvaluationSummary, RestaurantQuery
 from restaurant_agent.sources.factory import build_adapters
 
@@ -44,12 +42,6 @@ def _add_shared_run_flags(parser: argparse.ArgumentParser, settings: Settings) -
             "Confidence threshold for human review routing "
             f"(default: {settings.confidence_threshold})"
         ),
-    )
-    parser.add_argument(
-        "--backend",
-        choices=("pipeline", "graph"),
-        default="pipeline",
-        help="Orchestration backend: imperative pipeline (default) or LangGraph",
     )
     parser.add_argument(
         "--dry-run",
@@ -218,9 +210,8 @@ def _print_gather_summary(
 
 def _run_command(args: argparse.Namespace, settings: Settings) -> int:
     client = _build_client(args, settings)
-    run_fn = run_graph_pipeline if args.backend == "graph" else run_pipeline
 
-    summary = run_fn(
+    summary = run_graph_pipeline(
         input_path=args.input,
         output_path=args.output,
         review_queue_path=args.review_queue_output,
@@ -267,24 +258,14 @@ def _gather_command(
         settings=settings,
     )
 
-    if args.backend == "graph":
-        state = run_gather_graph_pipeline(
-            query=query,
-            adapters=adapters,
-            output_path=args.output,
-            review_queue_path=args.review_queue_output,
-            settings=settings,
-            client=client,
-        )
-    else:
-        state = run_gather_pipeline(
-            query=query,
-            adapters=adapters,
-            output_path=args.output,
-            review_queue_path=args.review_queue_output,
-            settings=settings,
-            client=client,
-        )
+    state = run_gather_graph_pipeline(
+        query=query,
+        adapters=adapters,
+        output_path=args.output,
+        review_queue_path=args.review_queue_output,
+        settings=settings,
+        client=client,
+    )
 
     _ = state
     _print_gather_summary(

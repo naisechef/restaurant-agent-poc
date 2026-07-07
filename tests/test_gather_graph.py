@@ -10,7 +10,7 @@ import pytest
 
 from restaurant_agent.config import Settings
 from restaurant_agent.gather_graph import EvidenceGatherPipeline, run_gather_graph, run_gather_graph_pipeline
-from restaurant_agent.gather_pipeline import GATHER_RESULT_COLUMNS
+from restaurant_agent.gather_state import GATHER_RESULT_COLUMNS
 from restaurant_agent.schemas import Evidence, EvidenceSourceType, RestaurantQuery
 from restaurant_agent.sources.fake import FakeSourceAdapter
 from tests.conftest import FakeClaudeClient, valid_extraction_json
@@ -50,7 +50,7 @@ def test_gather_graph_accumulates_four_source_results() -> None:
     pipeline = EvidenceGatherPipeline(client, threshold=0.6, adapters=adapters)
     graph = pipeline.build()
 
-    from restaurant_agent.gather_pipeline import _initial_gather_state
+    from restaurant_agent.gather_state import _initial_gather_state
 
     state = graph.invoke(_initial_gather_state(QUERY))
     if isinstance(state, dict):
@@ -81,7 +81,7 @@ def test_gather_graph_isolates_adapter_failure() -> None:
     pipeline = EvidenceGatherPipeline(client, threshold=0.6, adapters=adapters)
     graph = pipeline.build()
 
-    from restaurant_agent.gather_pipeline import _initial_gather_state
+    from restaurant_agent.gather_state import _initial_gather_state
 
     state = graph.invoke(_initial_gather_state(QUERY))
     if isinstance(state, dict):

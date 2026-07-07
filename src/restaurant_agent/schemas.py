@@ -126,7 +126,7 @@ class GatheredEvidence(BaseModel):
 
 ValidationStatus = Literal["ok", "flagged", "failed"]
 GatherRoute = Literal["success", "needs_review", "failed"]
-GatherBackend = Literal["pipeline", "graph"]
+GatherBackend = Literal["graph"]
 
 
 class SourceAdapterExecution(BaseModel):

@@ -15,7 +15,7 @@ from restaurant_agent.schemas import ExtractionResult
 from restaurant_agent.state import AgentState
 
 if TYPE_CHECKING:
-    from restaurant_agent.pipeline import LLMClient
+    from restaurant_agent.result_output import LLMClient
 
 logger = logging.getLogger(__name__)
 

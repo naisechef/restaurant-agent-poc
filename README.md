@@ -100,7 +100,6 @@ python -m restaurant_agent.cli --help
 | `--model NAME` | Override Anthropic model |
 | `--limit N` | Process at most N records (useful for smoke runs) |
 | `--confidence-threshold FLOAT` | Review routing threshold |
-| `--backend {pipeline,graph}` | Orchestration backend (default: `pipeline`) |
 | `--dry-run` | Deterministic local fake LLM responses; no API calls |
 
 Backward-compatible usage without the `run` subcommand still works:
@@ -118,7 +117,6 @@ restaurant-agent --dry-run --limit 3
 | `--fixtures-path PATH` | Static evidence fixtures directory |
 | `--output PATH` | Gather results CSV path |
 | `--review-queue-output PATH` | Gather review queue path |
-| `--backend {pipeline,graph}` | Orchestration backend (default: `pipeline`) |
 | `--dry-run` | Deterministic local LLM; static fixtures for sources |
 | `--live` | Use a live source instead of static fixtures for the `maps` role (see `--source`) |
 | `--source {google}` | Live source provider to use with `--live` (default: `google`); has no effect without `--live` |
@@ -142,16 +140,6 @@ restaurant-agent gather \
   --dry-run
 ```
 
-### Example: gather with LangGraph backend
-
-```bash
-restaurant-agent gather \
-  --name "The River Cafe" \
-  --city "London" \
-  --backend graph \
-  --dry-run
-```
-
 ### Example: gather with the live Google Places adapter
 
 Requires `GOOGLE_PLACES_API_KEY` — see [Google Places setup](#google-places-setup-optional-live-adapter). All other source roles (`search`, `reviews`, `website`) remain static/fake; only the `maps` role becomes live.
@@ -160,7 +148,6 @@ Requires `GOOGLE_PLACES_API_KEY` — see [Google Places setup](#google-places-se
 restaurant-agent gather \
   --name "The River Cafe" \
   --city "London" \
-  --backend graph \
   --live \
   --source google
 ```
@@ -171,14 +158,6 @@ Runs the full pipeline shape with heuristic local responses:
 
 ```bash
 restaurant-agent --dry-run --limit 3
-```
-
-### Example: LangGraph backend (dry run)
-
-Same behaviour as the default pipeline, using LangGraph orchestration:
-
-```bash
-restaurant-agent --backend graph --dry-run --limit 12
 ```
 
 ## Google Places setup (optional live adapter)
@@ -273,12 +252,12 @@ Unit tests cover preprocessing, validation, evaluation, agents, pipeline orchest
 - **Stronger evaluation** — larger labelled datasets, confusion matrices, regression suites on prompt changes.
 - **Resilience** — rate-limit handling, circuit breakers, configurable retries.
 - **Data scale** — Polars or streaming CSV for larger catalogues.
-- **Orchestration** — LangGraph or similar if the pipeline grows beyond a handful of agents.
+- **Richer graph behaviour** — async nodes, retries, and human-in-the-loop interrupts on top of the existing LangGraph orchestration.
 
 ## Documentation
 
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — system design
-- [docs/LANGGRAPH_ORCHESTRATION.md](docs/LANGGRAPH_ORCHESTRATION.md) — LangGraph backend design
+- [docs/LANGGRAPH_ORCHESTRATION.md](docs/LANGGRAPH_ORCHESTRATION.md) — LangGraph orchestration design
 - [docs/EVIDENCE_GATHERING.md](docs/EVIDENCE_GATHERING.md) — parallel evidence gathering
 - [docs/WEB_DEMO.md](docs/WEB_DEMO.md) — web demo local run and API
 - [docs/CLOUD_RUN_DEPLOYMENT.md](docs/CLOUD_RUN_DEPLOYMENT.md) — Cloud Run deploy, secrets, smoke tests

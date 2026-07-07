@@ -10,7 +10,7 @@ from pathlib import Path
 import pandas as pd
 
 from restaurant_agent.cli import main
-from restaurant_agent.pipeline import RESULT_COLUMNS
+from restaurant_agent.result_output import RESULT_COLUMNS
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 SAMPLE_CSV = PROJECT_ROOT / "data" / "restaurants.csv"
@@ -50,7 +50,7 @@ def test_cli_run_help_exits_zero() -> None:
     assert result.returncode == 0
     assert "--dry-run" in result.stdout
     assert "--input" in result.stdout
-    assert "--backend" in result.stdout
+    assert "--backend" not in result.stdout
 
 
 def test_cli_main_dry_run_smoke(tmp_path: Path) -> None:
@@ -114,35 +114,3 @@ def test_cli_dry_run_subprocess_smoke(tmp_path: Path) -> None:
     assert "Dry-run mode" in result.stdout
     assert output_path.exists()
     assert len(pd.read_csv(output_path)) == 2
-
-
-def test_cli_main_graph_backend_dry_run_smoke(tmp_path: Path) -> None:
-    """Invoke cli.main() with --backend graph (no installed console script)."""
-    output_path = tmp_path / "results.csv"
-    review_path = tmp_path / "review_queue.csv"
-
-    exit_code = main(
-        [
-            "--backend",
-            "graph",
-            "--dry-run",
-            "--limit",
-            "3",
-            "--input",
-            str(SAMPLE_CSV),
-            "--output",
-            str(output_path),
-            "--review-queue-output",
-            str(review_path),
-        ]
-    )
-
-    assert exit_code == 0
-    assert output_path.exists()
-    assert review_path.exists()
-
-    results = pd.read_csv(output_path)
-    assert list(results.columns) == RESULT_COLUMNS
-    assert len(results) == 3
-    assert results["prediction"].notna().all()
-    assert results["validation_status"].notna().all()

@@ -73,7 +73,7 @@ def test_build_gather_run_result_includes_google_places_summary() -> None:
 
     result = build_gather_run_result(
         state,
-        backend="pipeline",
+        backend="graph",
         graph_trace=[
             GraphNodeExecution(node="success", update={}, summary="Completed."),
         ],
@@ -125,7 +125,7 @@ def test_verified_validation_keeps_success_route() -> None:
             )
         ],
     )
-    result = build_gather_run_result(state, backend="pipeline")
+    result = build_gather_run_result(state, backend="graph")
     assert result.structured_validations[0].status == "verified"
     assert result.route == "success"
     assert result.needs_review is False
@@ -178,7 +178,7 @@ def test_google_places_summary_includes_rating_and_place_id() -> None:
             ),
         ],
     )
-    result = build_gather_run_result(state, backend="pipeline", live_google=True)
+    result = build_gather_run_result(state, backend="graph", live_google=True)
     assert result.google_places is not None
     assert result.google_places.rating == 4.6
     assert result.google_places.user_rating_count == 812

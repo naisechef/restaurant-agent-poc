@@ -1,6 +1,8 @@
 # Web Demo
 
-A FastAPI web layer on top of the existing gather pipeline. Enter a restaurant name and city to see the outdoor seating prediction, confidence, reasoning, evidence snippets, source metadata, gather errors, and (when using the LangGraph backend) node-by-node execution details.
+A FastAPI web layer on top of the existing gather pipeline. Enter a restaurant name and city to see the outdoor seating prediction, confidence, reasoning, evidence snippets, source metadata, gather errors, and node-by-node execution details.
+
+The web layer always runs the gather via `gather_graph.run_gather_graph` (LangGraph is the only orchestration path in this codebase — see [ARCHITECTURE.md](ARCHITECTURE.md)) and always makes a live call to the Anthropic API — there is no `dry_run` selection here, unlike the CLI's `--dry-run` flag. `ANTHROPIC_API_KEY` must be configured server-side for the web app to serve any result; see [Environment variables](#environment-variables).
 
 Results are returned as in-memory `GatherRunResult` objects — the web layer never reads CSV output files.
 
@@ -9,7 +11,7 @@ Results are returned as in-memory `GatherRunResult` objects — the web layer ne
 - **API keys stay server-side.** `ANTHROPIC_API_KEY` and `GOOGLE_PLACES_API_KEY` are loaded from environment variables or Cloud Run Secret Manager. They are never rendered in HTML, JSON, or JavaScript.
 - **No secrets in responses.** Errors are sanitized via `web/security.py`; stack traces and raw settings are never exposed to clients.
 - **No filesystem exposure.** Only `/static` serves CSS from `src/restaurant_agent/web/static/`. The app does not mount `/data`, `/outputs`, `/docs`, or the project root. There are no CSV download links or file-path inputs.
-- **Validated inputs.** Name and city are required with length limits (200 / 100). Backend must be `pipeline` or `graph`. `live_google` is a boolean flag only — no arbitrary URLs or crawl endpoints.
+- **Validated inputs.** Name and city are required with length limits (200 / 100). `live_google` is a boolean flag only — no arbitrary URLs or crawl endpoints.
 - **One request, one gather.** Each HTTP request runs a single gather operation using the configured server-side fixtures path (not user-supplied).
 - **OpenAPI disabled.** `/docs` and `/openapi.json` are not exposed in the demo app.
 
@@ -21,14 +23,14 @@ Requires Python 3.12+.
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[web,dev]"
-cp .env.example .env   # optional; dry-run needs no keys
+cp .env.example .env   # add ANTHROPIC_API_KEY — required, see below
 
 uvicorn restaurant_agent.web.app:app --reload --port 8080
 ```
 
 Open [http://127.0.0.1:8080/demo](http://127.0.0.1:8080/demo).
 
-Default form settings (dry-run + static fixtures) require **no API keys** and make **no external network calls**.
+Every search submitted through the form or `/api/gather` makes a live call to the Anthropic API, so `ANTHROPIC_API_KEY` **must** be set server-side — without it, requests fail with a `500` (`GatherRequestError`, sanitized message). Source evidence still defaults to static fixtures unless `live_google` is checked, in which case `GOOGLE_PLACES_API_KEY` is also required.
 
 ## Cloud Run deployment
 
@@ -71,8 +73,6 @@ The image includes `data/evidence_fixtures` for server-side static adapters only
 {
   "name": "The River Cafe",
   "city": "London",
-  "backend": "graph",
-  "dry_run": true,
   "live_google": false
 }
 ```
@@ -81,9 +81,9 @@ The image includes `data/evidence_fixtures` for server-side static adapters only
 |-------|------|---------|-------|
 | `name` | string | required | max 200 chars |
 | `city` | string | required | max 100 chars |
-| `backend` | `"pipeline"` \| `"graph"` | `"pipeline"` | |
-| `dry_run` | boolean | `true` | Uses deterministic local LLM |
-| `live_google` | boolean | `false` | Replaces maps adapter with Google Places |
+| `live_google` | boolean | `false` | Replaces the `maps` source adapter with Google Places |
+
+There is no `backend` or `dry_run` field — LangGraph is the only orchestration path in this codebase, and the web layer always makes a live Anthropic API call. The response's `backend` field is always `"graph"` and `dry_run` is always `false` (see below). For a dry run, use the CLI (`restaurant-agent gather --dry-run`).
 
 Single-result pages show confidence, validation status, route, evidence counts, and source reliability mix. Precision, recall, and F1 are dataset-level evaluation metrics and are reported for labelled batch runs (CLI `evaluate` / `gather` over `data/restaurants.csv`), not individual searches.
 
@@ -136,7 +136,7 @@ Same as the CLI — see [`.env.example`](../.env.example).
 
 | Variable | Required when | Default |
 |----------|---------------|---------|
-| `ANTHROPIC_API_KEY` | Live Claude (`dry_run=false`) | — |
+| `ANTHROPIC_API_KEY` | Always, for the web layer (which never runs in dry-run mode) | — |
 | `GOOGLE_PLACES_API_KEY` | `live_google=true` | — |
 | `DEFAULT_FIXTURES_PATH` | No | `data/evidence_fixtures` |
 | `CONFIDENCE_THRESHOLD` | No | `0.6` |

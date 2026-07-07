@@ -11,7 +11,7 @@ import pytest
 from restaurant_agent.config import Settings
 from restaurant_agent.data_loader import to_initial_state
 from restaurant_agent.graph_pipeline import GraphPipeline, run_graph_pipeline
-from restaurant_agent.pipeline import RESULT_COLUMNS, run_pipeline
+from restaurant_agent.result_output import RESULT_COLUMNS
 from restaurant_agent.schemas import RestaurantRecord
 from tests.conftest import ErrorClaudeClient, FakeClaudeClient, valid_extraction_json
 
@@ -155,48 +155,3 @@ def test_graph_pipeline_routes_to_terminal_nodes() -> None:
     assert result.needs_review is True
     assert result.validation_status == "flagged"
     assert graph_pipeline.route_after_validate(result) == "needs_review"
-
-
-def test_graph_and_imperative_pipelines_produce_identical_outputs(
-    sample_input_csv: Path,
-    pipeline_settings: Settings,
-    tmp_path: Path,
-) -> None:
-    responses = [
-        valid_extraction_json(label="yes", confidence=0.92),
-        valid_extraction_json(label="no", confidence=0.88),
-        valid_extraction_json(label="yes", confidence=0.45),
-    ]
-
-    imperative_output = tmp_path / "imperative_results.csv"
-    imperative_review = tmp_path / "imperative_review.csv"
-    graph_output = tmp_path / "graph_results.csv"
-    graph_review = tmp_path / "graph_review.csv"
-
-    imperative_client = FakeClaudeClient(list(responses))
-    graph_client = FakeClaudeClient(list(responses))
-
-    imperative_summary = run_pipeline(
-        input_path=sample_input_csv,
-        output_path=imperative_output,
-        review_queue_path=imperative_review,
-        settings=pipeline_settings,
-        client=imperative_client,
-    )
-    graph_summary = run_graph_pipeline(
-        input_path=sample_input_csv,
-        output_path=graph_output,
-        review_queue_path=graph_review,
-        settings=pipeline_settings,
-        client=graph_client,
-    )
-
-    imperative_results = pd.read_csv(imperative_output)
-    graph_results = pd.read_csv(graph_output)
-    pd.testing.assert_frame_equal(imperative_results, graph_results)
-
-    imperative_review_df = pd.read_csv(imperative_review)
-    graph_review_df = pd.read_csv(graph_review)
-    pd.testing.assert_frame_equal(imperative_review_df, graph_review_df)
-
-    assert imperative_summary == graph_summary

@@ -17,7 +17,7 @@ from restaurant_agent.agents import (
 from restaurant_agent.config import Settings
 from restaurant_agent.data_loader import load_restaurants, to_initial_state
 from restaurant_agent.evaluation import evaluate_predictions
-from restaurant_agent.pipeline import (
+from restaurant_agent.result_output import (
     LLMClient,
     RESULT_COLUMNS,
     _state_to_row,

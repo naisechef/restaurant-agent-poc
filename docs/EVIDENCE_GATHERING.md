@@ -6,10 +6,7 @@ This document describes the parallel evidence gathering feature: how sources are
 
 The `gather` CLI command accepts a restaurant **name** and **city**, collects evidence from multiple source adapters in parallel, merges and deduplicates snippets, then runs the same preprocessing → extraction → validation agent chain used by the CSV `run` command.
 
-Two orchestration backends are available:
-
-- **`pipeline`** (default) — thread-pool parallel gathering in `gather_pipeline.py`
-- **`graph`** — LangGraph fan-out/fan-in in `gather_graph.py`
+LangGraph fan-out/fan-in orchestration in `gather_graph.py` is the only gather orchestration path. An earlier thread-pool imperative backend was removed; see [ARCHITECTURE.md § Key design decisions](ARCHITECTURE.md#key-design-decisions).
 
 ## Architecture
 
@@ -36,7 +33,7 @@ flowchart TD
     success --> END
 ```
 
-The graph backend uses true LangGraph parallel branches. Each gather node writes to `source_results` via an `operator.add` reducer. Downstream agent nodes return partial state updates to avoid re-accumulating source results.
+The gather graph uses true LangGraph parallel branches. Each gather node writes to `source_results` via an `operator.add` reducer. Downstream agent nodes return partial state updates to avoid re-accumulating source results.
 
 ## Source adapters
 
@@ -50,7 +47,7 @@ Fixtures live in `data/evidence_fixtures/` (`search.json`, `reviews.json`, `maps
 
 ## Live Google Places adapter
 
-`gather --live --source google` swaps the `maps` role from `StaticSearchAdapter` to `GooglePlacesAdapter` in `sources/factory.py::build_adapters()`. The `search`, `reviews`, and `website` roles are unaffected and remain static/fake. No changes were needed in `gather.py`, `gather_pipeline.py`, `gather_graph.py`, or `evidence_merge.py` — `GooglePlacesAdapter` satisfies the same `SourceAdapter` protocol as every other adapter.
+`gather --live --source google` swaps the `maps` role from `StaticSearchAdapter` to `GooglePlacesAdapter` in `sources/factory.py::build_adapters()`. The `search`, `reviews`, and `website` roles are unaffected and remain static/fake. No changes were needed in `gather.py`, `gather_state.py`, `gather_graph.py`, or `evidence_merge.py` — `GooglePlacesAdapter` satisfies the same `SourceAdapter` protocol as every other adapter.
 
 ### Request flow
 
@@ -83,6 +80,8 @@ Place Details FieldMask: `id,displayName,formattedAddress,googleMapsUri,websiteU
 | `websiteUri` | — | used as `Evidence.url` (provenance) on the editorial-summary item only; **never fetched or crawled** | — |
 
 All Google-sourced evidence uses `source_name="google_places"`. No new `EvidenceSourceType` enum value was added — `MAPS` and `REVIEW` are reused, matching how `static_maps`/`static_reviews` already provide those types.
+
+`outdoorSeating` is captured twice: once as `MAPS` evidence text (above, for the LLM prompt) and separately as a raw `StructuredSourceAttributes.outdoor_seating` boolean on `SourceResult`, kept alongside — not instead of — the text evidence. The structured value is not shown to the LLM; it is used afterwards to cross-check the LLM's prediction. See [ARCHITECTURE.md § Structured validation and decision escalation](ARCHITECTURE.md#structured-validation-and-decision-escalation) for how this can escalate a record to `needs_review`.
 
 ### Safeguards
 
@@ -125,7 +124,6 @@ See `schemas.py`:
 
 ```bash
 restaurant-agent gather --name "The River Cafe" --city "London" --dry-run
-restaurant-agent gather --name "The River Cafe" --city "London" --backend graph --dry-run
 ```
 
 The existing CSV path is unchanged:
@@ -150,7 +148,7 @@ All gather tests — including the Google Places adapter — use `FakeSourceAdap
 
 ```bash
 pytest tests/test_source_adapters.py tests/test_gather.py tests/test_evidence_merge.py
-pytest tests/test_gather_pipeline.py tests/test_gather_graph.py tests/test_cli_gather.py
+pytest tests/test_gather_graph.py tests/test_cli_gather.py
 pytest tests/test_google_places_adapter.py
 ```
 

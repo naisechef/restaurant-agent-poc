@@ -6,12 +6,9 @@ This document describes the restaurant outdoor seating extraction pipeline: how 
 
 The system is a batch CLI pipeline. Each restaurant record flows through three agents that read and update a single shared `AgentState` object. Predictions are evaluated against optional ground-truth labels, written to CSV, and low-confidence cases are routed to a human review queue.
 
-Two orchestration backends are available via `--backend`:
+LangGraph is the sole orchestration layer: `graph_pipeline.py` compiles a `StateGraph(AgentState)` with conditional routing to terminal nodes and runs every `run` invocation. See [LANGGRAPH_ORCHESTRATION.md](LANGGRAPH_ORCHESTRATION.md) for graph design details.
 
-- **`pipeline`** (default) — imperative function chain in `pipeline.py`
-- **`graph`** — LangGraph `StateGraph` in `graph_pipeline.py` with conditional routing to terminal nodes
-
-Both backends call the same agents and produce identical outputs. See [LANGGRAPH_ORCHESTRATION.md](LANGGRAPH_ORCHESTRATION.md) for graph design details.
+An earlier imperative (non-LangGraph) backend existed alongside the graph backend during initial development; it has been removed, and LangGraph is now the only orchestration path for both the `run` and `gather` commands.
 
 ## Pipeline diagram
 
@@ -19,31 +16,27 @@ Both backends call the same agents and produce identical outputs. See [LANGGRAPH
 ┌─────────────────────────────────────────────────────────────────────────┐
 │                         restaurant_agent.cli                            │
 │  argparse · logging setup · ClaudeClient or DryRunClaudeClient          │
-│  --backend pipeline | graph                                             │
 └───────────────────────────────────┬─────────────────────────────────────┘
                                     │
-                    ┌───────────────┴───────────────┐
-                    ▼                               ▼
-┌───────────────────────────────┐   ┌───────────────────────────────────┐
-│   restaurant_agent.pipeline   │   │ restaurant_agent.graph_pipeline   │
-│   imperative agent chain      │   │ GraphPipeline · LangGraph routing │
-└───────────────┬───────────────┘   └───────────────┬───────────────────┘
-                │                                   │
-                └───────────────┬───────────────────┘
-                                │
-     data/restaurants.csv           │
-              │                     │
-              ▼                     │
-       ┌──────────────┐             │
-       │ data_loader  │             │
-       └──────┬───────┘             │
-              │ RestaurantRecord    │
-              ▼                     │
-       ┌──────────────┐             │
-       │ AgentState   │◄────────────┘  (one state per record)
-       └──────┬───────┘
-              │
-              ▼
+                                    ▼
+                    ┌───────────────────────────────────┐
+                    │ restaurant_agent.graph_pipeline   │
+                    │ GraphPipeline · LangGraph routing │
+                    └───────────────┬───────────────────┘
+                                    │
+                     data/restaurants.csv
+                              │
+                              ▼
+                       ┌──────────────┐
+                       │ data_loader  │
+                       └──────┬───────┘
+                              │ RestaurantRecord
+                              ▼
+                       ┌──────────────┐
+                       │ AgentState   │  (one state per record)
+                       └──────┬───────┘
+                              │
+                              ▼
        ┌──────────────────────┐
        │ preprocessing_agent  │  deterministic · preprocessing.py
        └──────────┬───────────┘
@@ -74,9 +67,9 @@ Both backends call the same agents and produce identical outputs. See [LANGGRAPH
 
 | Module | Responsibility |
 |--------|----------------|
-| `cli.py` | Argument parsing, logging setup, client selection (`ClaudeClient` vs `DryRunClaudeClient`), backend selection, summary output |
-| `pipeline.py` | Imperative orchestration: load records, run agent chain per row, write outputs, return `EvaluationSummary` |
+| `cli.py` | Argument parsing, logging setup, client selection (`ClaudeClient` vs `DryRunClaudeClient`), summary output |
 | `graph_pipeline.py` | LangGraph orchestration: `GraphPipeline` class, conditional routing to terminal nodes, `run_graph_pipeline()` |
+| `result_output.py` | Shared `run` helpers: `LLMClient` protocol, `RESULT_COLUMNS`, row shaping (`_state_to_row`), CSV writing (`_write_csv`) |
 | `config.py` | Environment-backed `Settings`; API key required only at real client construction |
 | `schemas.py` | Pydantic data contracts: `RestaurantRecord`, `ExtractionResult`, `EvaluationSummary` |
 | `state.py` | Shared `AgentState` passed between all agents |
@@ -147,7 +140,7 @@ Errors are isolated **per record** — one bad LLM response does not abort the b
 | Missing `cleaned_text` | `error` set on state in extraction agent |
 | Anthropic API error | Caught as `LLMRequestError`; `error` set on state |
 | JSON parse / schema failure | One repair retry; then `error` set |
-| Unexpected exception in agent chain | Caught in `pipeline._process_record`; `validation_status = "failed"`, `needs_review = True` |
+| Unexpected exception in agent chain | Caught in `graph_pipeline._invoke_record`; `validation_status = "failed"`, `needs_review = True` |
 
 Failed records appear in `outputs/results.csv` with an `error` column. They are excluded from accuracy/precision/recall denominators but counted in `EvaluationSummary.failure_count`.
 
@@ -179,23 +172,28 @@ The provider-specific name (`claude_client.py`, not `llm_client.py`) reflects wh
 
 ```
 src/restaurant_agent/
-├── cli.py, pipeline.py, graph_pipeline.py, config.py
-├── gather.py, evidence_merge.py, gather_pipeline.py, gather_graph.py
+├── cli.py, graph_pipeline.py, config.py, result_output.py
+├── gather.py, evidence_merge.py, gather_state.py, gather_graph.py
+├── gather_result.py, structured_validation.py
 ├── schemas.py, state.py
 ├── data_loader.py, preprocessing.py, validation.py, evaluation.py
 ├── claude_client.py, logging_config.py
 ├── prompts/outdoor_seating.py
 ├── sources/
 │   ├── base.py, fake.py, static_search.py, google_places.py, factory.py
-└── agents/
-    ├── preprocessing_agent.py
-    ├── extraction_agent.py
-    └── validation_agent.py
+├── agents/
+│   ├── preprocessing_agent.py
+│   ├── extraction_agent.py
+│   └── validation_agent.py
+└── web/
+    ├── app.py, routes.py, service.py, middleware.py
+    ├── readiness.py, security.py, api_schemas.py
+    └── templates/
 ```
 
-## LangGraph backend
+## LangGraph orchestration
 
-When `--backend graph` is selected, `GraphPipeline` compiles a linear `StateGraph(AgentState)` with conditional routing after validation:
+`GraphPipeline` compiles a linear `StateGraph(AgentState)` with conditional routing after validation:
 
 ```
 START → preprocess → extract → validate → route
@@ -204,7 +202,7 @@ START → preprocess → extract → validate → route
   └── failed        → END
 ```
 
-Terminal nodes are pass-through in the current PoC — they exist to demonstrate routing and to host future hooks (metrics, retry, human-in-the-loop). `run_graph_pipeline()` reuses CSV writing, row conversion, and evaluation from `pipeline.py`.
+Terminal nodes are pass-through in the current PoC — they exist to demonstrate routing and to host future hooks (metrics, retry, human-in-the-loop). `run_graph_pipeline()` reuses CSV writing, row conversion, and evaluation from `result_output.py`.
 
 ## Evidence gathering
 
@@ -220,10 +218,27 @@ name + city → source adapters (parallel) → merge/dedup → AgentState.raw_te
 | `sources/` | `SourceAdapter` protocol, `FakeSourceAdapter`, `StaticSearchAdapter`, `GooglePlacesAdapter` (optional live `maps` source, `gather --live --source google`), factory |
 | `gather.py` | Parallel adapter execution with per-source failure isolation |
 | `evidence_merge.py` | Dedup, reliability ordering, combined evidence text |
-| `gather_pipeline.py` | Imperative gather orchestration |
+| `gather_state.py` | Shared gather helpers: `GATHER_RESULT_COLUMNS`, restaurant ID resolution, initial state seeding, row shaping |
 | `gather_graph.py` | LangGraph fan-out/fan-in gather orchestration |
 
 The CSV `run` path is unchanged. Gather reuses the same agents without modification.
+
+## Structured validation and decision escalation
+
+Some sources — currently `GooglePlacesAdapter` — return a **structured attribute** alongside free-text evidence: a provider-asserted boolean (`outdoorSeating: true/false`) rather than a snippet the LLM has to interpret. `structured_validation.py` compares that structured value against the LLM's `prediction` and produces a `StructuredValidation` per source with one of four statuses:
+
+| Status | Meaning |
+|--------|---------|
+| `verified` | LLM prediction (`yes`/`no`) agrees with the provider's structured value |
+| `conflict` | LLM prediction disagrees with the provider's structured value |
+| `structured_only` | LLM prediction is `unknown`, but the provider has a structured value |
+| `unavailable` | No provider structured value exists for this source (nothing to compare) |
+
+This is a second, independent check on top of the pipeline's own `validation_agent.py` business rules (confidence/evidence checks) — it answers a different question: not "is this extraction internally trustworthy?" but "does an authoritative structured source agree with the LLM's read of the evidence?"
+
+`gather_result.py` uses this to potentially **escalate the route**: if the pipeline's own validation already produced `success` but a structured validation is `conflict` or `structured_only` (`escalation_needs_review()`), the final route and `needs_review` flag are overridden to route the record to human review anyway. `failed` and pipeline-driven `needs_review` routes are never downgraded — escalation only ever tightens the outcome. `gather_result.py` also builds a human-readable `decision_path` (e.g. "Claude predicted YES" → "Google Places structured outdoor seating=TRUE" → "Decision verified" → "Route success") surfaced in the web UI's Decision Verification panel (see [WEB_DEMO.md](WEB_DEMO.md)).
+
+Only `outdoor_seating` is checked today; the mechanism is designed to extend to additional attributes without changing the escalation logic itself.
 
 ## Key design decisions
 
@@ -232,6 +247,7 @@ The CSV `run` path is unchanged. Gather reuses the same agents without modificat
 | Shared `AgentState` | Uniform agent contract; used directly as LangGraph state — no duplicate schema |
 | Two validation layers | Schema correctness vs operational trustworthiness |
 | Per-record error isolation | Batch resilience; failures tracked separately from model disagreement |
-| Dual orchestration backends | Imperative pipeline remains default; LangGraph is opt-in for graph-native routing |
+| LangGraph as the sole orchestration layer | An earlier imperative backend was removed once LangGraph's routing/state model proved sufficient; one execution path is simpler to reason about and test than two that must stay behaviourally identical |
 | Provider-specific LLM client | Mockable boundary; explicit about current provider |
 | Human review queue as output | Makes low-confidence routing concrete, not just a metric |
+| Structured validation can escalate but never downgrade a route | A conflicting authoritative source should tighten trust, not override a failure/review the pipeline already flagged |
