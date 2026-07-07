@@ -48,6 +48,8 @@ cp .env.example .env        # add ANTHROPIC_API_KEY for live Claude runs
 
 For the web demo: `pip install -e ".[web,dev]"` then `uvicorn restaurant_agent.web.app:app --reload`.
 
+For the Spark batch pipeline (see below): `pip install -e ".[dev,spark]"` — requires a local Java runtime (JDK 8/11/17).
+
 ## Environment variables
 
 Copy `.env.example` to `.env` and adjust as needed.
@@ -180,6 +182,24 @@ Notes:
 - `websiteUri` returned by Google Places is stored only as a citation URL — it is never fetched or crawled. Website crawling is out of scope for this adapter and may become a separate adapter later.
 - See [docs/EVIDENCE_GATHERING.md](docs/EVIDENCE_GATHERING.md) for the evidence-mapping details and safeguards.
 
+## Spark Pipeline
+
+A standalone PySpark batch layer computes outdoor-seating features from
+`data/raw/restaurants.csv` and `data/raw/reviews.csv` using deterministic
+keyword matching (no LLM calls), and writes a curated Parquet dataset to
+`data/curated/restaurant_features/`. It runs independently of the LangGraph
+agent above — a complementary, deterministic evidence signal, not a
+replacement.
+
+```bash
+python -m restaurant_agent.pipelines.build_restaurant_features \
+    [--raw-dir data/raw] [--output-dir data/curated/restaurant_features]
+```
+
+See [docs/SPARK_PIPELINE.md](docs/SPARK_PIPELINE.md) for the architecture,
+the confidence-scoring formula, known limitations (no negation handling),
+and an example of loading the curated output from another component.
+
 ## Output files
 
 | File | Contents |
@@ -231,6 +251,14 @@ Run only the end-to-end smoke tests:
 pytest tests/test_smoke.py
 ```
 
+The Spark pipeline tests require the optional `spark` extra and are
+skipped otherwise:
+
+```bash
+pip install -e ".[dev,spark]"
+pytest tests/pipelines/test_features.py
+```
+
 Unit tests cover preprocessing, validation, evaluation, agents, pipeline orchestration, and the dry-run client. Agent and pipeline tests use `FakeClaudeClient` from `tests/conftest.py` or `DryRunClaudeClient` for deterministic LLM responses.
 
 ## Limitations
@@ -251,7 +279,7 @@ Unit tests cover preprocessing, validation, evaluation, agents, pipeline orchest
 - **Human review workflow** — UI for the review queue with feedback loops into prompt tuning.
 - **Stronger evaluation** — larger labelled datasets, confusion matrices, regression suites on prompt changes.
 - **Resilience** — rate-limit handling, circuit breakers, configurable retries.
-- **Data scale** — Polars or streaming CSV for larger catalogues.
+- **Data scale** — the LLM pipeline still uses pandas for small CSVs; see the Spark batch pipeline (`docs/SPARK_PIPELINE.md`) for a distributed-processing-compatible ingestion/feature pattern that could absorb a larger restaurant/review catalogue.
 - **Richer graph behaviour** — async nodes, retries, and human-in-the-loop interrupts on top of the existing LangGraph orchestration.
 
 ## Documentation
@@ -262,3 +290,4 @@ Unit tests cover preprocessing, validation, evaluation, agents, pipeline orchest
 - [docs/WEB_DEMO.md](docs/WEB_DEMO.md) — web demo local run and API
 - [docs/CLOUD_RUN_DEPLOYMENT.md](docs/CLOUD_RUN_DEPLOYMENT.md) — Cloud Run deploy, secrets, smoke tests
 - [docs/IMPLEMENTATION_PLAN.md](docs/IMPLEMENTATION_PLAN.md) — detailed build specification
+- [docs/SPARK_PIPELINE.md](docs/SPARK_PIPELINE.md) — Spark batch feature pipeline

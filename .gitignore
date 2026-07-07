@@ -30,6 +30,10 @@ htmlcov/
 outputs/*.csv
 outputs/*.json
 
+# Generated Spark curated output (parquet)
+data/curated/restaurant_features/*
+!data/curated/restaurant_features/.gitkeep
+
 # OS and editor
 .DS_Store
 .idea/

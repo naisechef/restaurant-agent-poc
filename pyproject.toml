@@ -23,6 +23,9 @@ web = [
     "jinja2>=3.1",
     "python-multipart>=0.0.12",
 ]
+spark = [
+    "pyspark>=3.5,<4.0",
+]
 
 [project.scripts]
 restaurant-agent = "restaurant_agent.cli:main"

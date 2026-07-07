@@ -1,0 +1,9 @@
+restaurant_id,name,cuisine,city,area,rating,review_count,price_level,latitude,longitude
+rest-001,Harbor View Cafe,Seafood,Brighton,Seafront,4.3,120,2,50.8195,-0.1372
+rest-002,  ROOFTOP Bistro  ,italian,  london ,Soho,4.5,340,3,51.5136,-0.1365
+rest-003,Garden Bistro,French,Paris,Marais,4.1,210,3,48.8589,2.3556
+rest-004,Seaside Terrace House,Mediterranean,Nice,Promenade,4.6,180,3,43.7009,7.2683
+rest-005,Downtown Diner,American,Chicago,Loop,3.9,95,2,41.8781,-87.6298
+rest-006,Sunny Side Eatery,Cafe,Austin,Downtown,4.2,150,1,30.2672,-97.7431
+rest-007,The Empty Slate,Steakhouse,Denver,LoDo,4.0,0,3,39.7392,-104.9903
+rest-008,  Messy Fields Grill ,  BBQ ,austin,East Side,abc,60,5,200,-97.7000

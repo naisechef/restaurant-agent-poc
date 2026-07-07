@@ -1,0 +1,15 @@
+review_id,restaurant_id,review_text
+rev-001,rest-001,Loved the patio seating for lunch.
+rev-002,rest-001,Great outdoor seating with sea views.
+rev-003,rest-002,The rooftop bar was fantastic.
+rev-004,rest-002,Perfect al fresco dining experience.
+rev-005,rest-003,Beautiful garden area out back.
+rev-006,rest-003,"We sat in the courtyard, lovely spot."
+rev-007,rest-004,The sea view terrace was breathtaking.
+rev-008,rest-004,Nice terrace for evening drinks.
+rev-009,rest-005,Service was slow but the food was good.
+rev-010,rest-005,
+rev-011,rest-006,They have outside tables in summer.
+rev-012,rest-006,"Casual outdoor seating area, kids friendly."
+rev-013,rest-008,Lovely   patio  seating in the back.
+rev-014,rest-008,Good food, average service.
